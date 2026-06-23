@@ -1,108 +1,158 @@
 import os
+import re
+import json
 import sqlite3
+import requests
 from datetime import datetime, timedelta
 from flask import Flask, request, redirect, url_for, session, render_template_string
 
 app = Flask(__name__)
-app.secret_key = "kozmos55_gizli_anahtar_9988"
+app.secret_key = "guvenpanel_2026_gizli_anahtar"
 
 # ============================================================
 # VERİTABANI
 # ============================================================
 def init_db():
     conn = sqlite3.connect('iptv.db')
-    cursor = conn.cursor()
+    c = conn.cursor()
 
-    cursor.execute('''CREATE TABLE IF NOT EXISTS users 
-                      (id INTEGER PRIMARY KEY AUTOINCREMENT, 
-                       username TEXT UNIQUE, 
-                       password TEXT, 
-                       expiry_date TEXT)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS users 
+                 (id INTEGER PRIMARY KEY AUTOINCREMENT, 
+                  username TEXT UNIQUE, 
+                  password TEXT, 
+                  server_url TEXT,
+                  expiry_date TEXT)''')
 
-    cursor.execute('''CREATE TABLE IF NOT EXISTS channels 
-                      (id INTEGER PRIMARY KEY AUTOINCREMENT, 
-                       name TEXT, 
-                       url TEXT, 
-                       category TEXT,
-                       logo TEXT)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS channels 
+                 (id INTEGER PRIMARY KEY AUTOINCREMENT, 
+                  name TEXT, 
+                  url TEXT, 
+                  category TEXT,
+                  logo TEXT,
+                  stream_type TEXT DEFAULT 'live')''')
+
+    c.execute('''CREATE TABLE IF NOT EXISTS m3u_sources 
+                 (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  name TEXT,
+                  url TEXT,
+                  last_import TEXT)''')
 
     # Admin hesabı
-    cursor.execute("SELECT * FROM users WHERE username='admin'")
-    if not cursor.fetchone():
-        cursor.execute("INSERT INTO users (username, password, expiry_date) VALUES ('admin', 'admin123', 'Sınırsız')")
+    c.execute("SELECT * FROM users WHERE username='admin'")
+    if not c.fetchone():
+        c.execute("INSERT INTO users (username, password, server_url, expiry_date) VALUES (?, ?, ?, ?)",
+                  ('admin', 'admin123', 'https://guvenpanel.com', 'Sınırsız'))
 
-    # ----- KANALLAR -----
-    cursor.execute("SELECT COUNT(*) FROM channels")
-    if cursor.fetchone()[0] == 0:
-        kanallar = [
-            ("Vostok TV [KOZMOS55]", "http://911play.ru:3456/live/VostokSite/cdnVostaoc911tv123456/489.m3u8", "Rusiya", "https://i.postimg.cc/NfmDy569/2018.png"),
-            ("Live TV RU [KOZMOS55]", "https://tv.mobyservice.ru/livetv/index.m3u8", "Rusiya", "https://i.postimg.cc/DwZXkgsV/In-Shot-20260105-102529648.png"),
-            ("Horror Cinema [KOZMOS55]", "https://catcast-bana-sor.biz-az.workers.dev/index.m3u8?id=by-kerimoff-horror.m3u8", "Films", "https://i.postimg.cc/yxsJGXn3/In-Shot-20260619-205118789.png"),
-            ("Hind Filmləri [KOZMOS55]", "https://catcast-bana-sor.biz-az.workers.dev/index.m3u8?id=by-kerimof-hind-filmleri.m3u8", "Films", "https://i.postimg.cc/yxsJGXn3/In-Shot-20260619-205118789.png"),
-            ("Retro Cinema [KOZMOS55]", "https://catcast-bana-sor.biz-az.workers.dev/index.m3u8?id=by-kerimoff-azeri-retro-filmle.m3u8", "Films", "https://i.postimg.cc/yxsJGXn3/In-Shot-20260619-205118789.png"),
-            ("Retro Cinema 2 [KOZMOS55]", "https://catcast-bana-sor.biz-az.workers.dev/index.m3u8?id=by-kerimoff-retro-filmler-2.m3u8", "Films", "https://i.postimg.cc/yxsJGXn3/In-Shot-20260619-205118789.png"),
-            ("DigiNET Cinema [KOZMOS55]", "https://a8.radyotelekom.com.tr:3276/stream/play.m3u8", "Films", "https://i.postimg.cc/5N4mghBq/In-Shot-20260510-202245174.png"),
-            ("STV Sinema [KOZMOS55]", "https://a8.radyotelekom.com.tr:3179/stream/play.m3u8", "Films", "https://i.postimg.cc/BbWfvvFG/IMG-20260405-094134-027.jpg"),
-            ("CBC SPORT [KOZMOS55]", "http://erlyvideo.RUSIYA 2.az:80/cbcsporthd/mono.m3u8", "Sports", "https://i.postimg.cc/3w4FTNxx/CBC-Sport-TV-loqo.png"),
-            ("CBC SPORT★ [KOZMOS55]", "http://176.65.146.189:8701/play/a09h", "Sports", "https://i.postimg.cc/3w4FTNxx/CBC-Sport-TV-loqo.png"),
-            ("IDMAN TV [KOZMOS55]", "http://flussonic.izone.az:80/idmanaz/mono.m3u8", "Sports", "https://i.postimg.cc/7LfmZXmD/dman-TV-logo.png"),
-            ("IDMAN TV★ [KOZMOS55]", "http://str.yodacdn.net/idmantele/index.m3u8", "Sports", "https://i.postimg.cc/7LfmZXmD/dman-TV-logo.png"),
-            ("Qaydasız Döyüşlər [KOZMOS55]", "https://catcast-bana-sor.biz-az.workers.dev/index.m3u8?id=by-kerimoff-gaydasiz-doyusler.m3u8", "Sports", "https://i.postimg.cc/yxsJGXn3/In-Shot-20260619-205118789.png"),
-            ("Bu Seherde [KOZMOS55]", "https://catcast-bana-sor.biz-az.workers.dev/index.m3u8?id=by-kerimoff-bu-seherde.m3u8", "Türkiye", "https://i.postimg.cc/yxsJGXn3/In-Shot-20260619-205118789.png"),
-            ("Bu Seherde 2 [KOZMOS55]", "https://catcast-bana-sor.biz-az.workers.dev/index.m3u8?id=by-kerimoff-bu-seherde2.m3u8", "Türkiye", "https://i.postimg.cc/yxsJGXn3/In-Shot-20260619-205118789.png"),
-            ("Yeşilçam [KOZMOS55]", "https://catcast-bana-sor.biz-az.workers.dev/index.m3u8?id=by-kerimoff-yesilcam.m3u8", "Türkiye", "https://i.postimg.cc/yxsJGXn3/In-Shot-20260619-205118789.png"),
-            ("Kemal Sunal [KOZMOS55]", "https://catcast-bana-sor.biz-az.workers.dev/index.m3u8?id=ksunal.m3u8", "Türkiye", "https://i.postimg.cc/yxsJGXn3/In-Shot-20260619-205118789.png"),
-            ("FLUX TV [KOZMOS55]", "https://a8.radyotelekom.com.tr:3232/stream/play.m3u8", "Türkiye", "https://i.postimg.cc/br7hSHP2/In-Shot-20260531-073742477.png"),
-            ("İsmayıllı TV [KOZMOS55]", "https://a8.radyotelekom.com.tr:3973/hybrid/play.m3u8", "Türkiye", "https://i.postimg.cc/2jW1tzhV/In-Shot-20260426-173635086.png"),
-            ("Kanal 12 [KOZMOS55]", "https://live.artidijitalmedya.com/artidijital_kanal12/kanal12/playlist.m3u8", "Türkiye", "https://i.postimg.cc/PqNdMwTt/In-Shot-20250502-204654847.png"),
-            ("AZTV [KOZMOS55]", "http://flussonic.izone.az:80/aztv/mono.m3u8", "Azərbaycan", "https://i.postimg.cc/sg126ZT1/a.png"),
-            ("AZTV★ [KOZMOS55]", "http://str.yodacdn.net/azertv/index.m3u8", "Azərbaycan", "https://i.postimg.cc/sg126ZT1/a.png"),
-            ("İCTİMAİ TV [KOZMOS55]", "http://flussonic.izone.az:80/ictimaitv/mono.m3u8", "Azərbaycan", "https://i.postimg.cc/3wvx7Q5T/ITV-Azerbaijan-Logo.png"),
-            ("İCTİMAİ TV★ [KOZMOS55]", "https://live.itv.az/itv.m3u8", "Azərbaycan", "https://i.postimg.cc/3wvx7Q5T/ITV-Azerbaijan-Logo.png"),
-            ("MƏDƏNİYYƏT TV [KOZMOS55]", "http://flussonic.izone.az:80/medeniyyet/mono.m3u8", "Azərbaycan", "https://i.postimg.cc/0Q12yXPJ/M-d-niyy-t-TV-loqo.png"),
-            ("MƏDƏNİYYƏT TV★ [KOZMOS55]", "http://str.yodacdn.net/medeniyyettele/index.m3u8", "Azərbaycan", "https://i.postimg.cc/0Q12yXPJ/M-d-niyy-t-TV-loqo.png"),
-            ("ATV [KOZMOS55]", "http://flussonic.izone.az:80/azadazerbaycan/mono.m3u8", "Azərbaycan", "https://i.postimg.cc/T1YxKZSh/785cfca9083712aedfed84b91a0f00e8.png"),
-            ("ATV★ [KOZMOS55]", "http://str.yodacdn.net/atv/index.m3u8", "Azərbaycan", "https://i.postimg.cc/T1YxKZSh/785cfca9083712aedfed84b91a0f00e8.png"),
-            ("XƏZƏR TV [KOZMOS55]", "http://flussonic.izone.az:80/xezertv/mono.m3u8", "Azərbaycan", "https://i.postimg.cc/bYFW0DSm/X-z-r-TV-2023.png"),
-            ("XƏZƏR TV★ [KOZMOS55]", "https://raw.githubusercontent.com/UzunMuhalefet/streams/main/myvideo-az/xezer-tv.m3u8", "Azərbaycan", "https://i.postimg.cc/bYFW0DSm/X-z-r-TV-2023.png"),
-            ("SPACE TV [KOZMOS55]", "http://flussonic.izone.az:80/spacetv/mono.m3u8", "Azərbaycan", "https://i.postimg.cc/c1Qrztms/In-Shot-20251103-071346014.png"),
-            ("SPACE TV★ [KOZMOS55]", "http://str.yodacdn.net/space/index.m3u8", "Azərbaycan", "https://i.postimg.cc/c1Qrztms/In-Shot-20251103-071346014.png"),
-            ("ARB TV [KOZMOS55]", "http://flussonic.izone.az:80/arb/mono.m3u8", "Azərbaycan", "https://i.postimg.cc/zfJxY8RL/ARB-Media-Qrup.png"),
-            ("ARB TV★ [KOZMOS55]", "https://raw.githubusercontent.com/UzunMuhalefet/streams/main/myvideo-az/arb.m3u8", "Azərbaycan", "https://i.postimg.cc/zfJxY8RL/ARB-Media-Qrup.png"),
-            ("ARB 24 [KOZMOS55]", "http://flussonic.izone.az:80/arb24/mono.m3u8", "Azərbaycan", "https://i.postimg.cc/hjvMhssc/ARB-24.png"),
-            ("ARB 24★ [KOZMOS55]", "http://str.yodacdn.net/arb24/index.m3u8", "Azərbaycan", "https://i.postimg.cc/hjvMhssc/ARB-24.png"),
-            ("ARB GÜNƏŞ [KOZMOS55]", "http://flussonic.izone.az:80/arbgunesh/mono.m3u8", "Azərbaycan", "https://i.postimg.cc/4nk1Lggx/ARB-Gunesh-Logo.png"),
-            ("ARB GÜNƏŞ★ [KOZMOS55]", "https://raw.githubusercontent.com/UzunMuhalefet/streams/main/myvideo-az/arb-gunes.m3u8", "Azərbaycan", "https://i.postimg.cc/4nk1Lggx/ARB-Gunesh-Logo.png"),
-            ("BAKU TV [KOZMOS55]", "https://raw.githubusercontent.com/UzunMuhalefet/streams/refs/heads/main/myvideo-az/baku-tv.m3u8", "Azərbaycan", "https://i.postimg.cc/pXfSw016/hd-logo.png"),
-            ("BAKU TV★ [KOZMOS55]", "http://str.yodacdn.net/bakutv/index.m3u8", "Azərbaycan", "https://i.postimg.cc/pXfSw016/hd-logo.png"),
-            ("REAL TV [KOZMOS55]", "http://flussonic.izone.az:80/realtv/mono.m3u8", "Azərbaycan", "https://i.postimg.cc/KcNLCBD5/Real-TV-Azerbaijan-Logo.png"),
-            ("REAL TV★ [KOZMOS55]", "http://str.yodacdn.net/real/index.m3u8", "Azərbaycan", "https://i.postimg.cc/KcNLCBD5/Real-TV-Azerbaijan-Logo.png"),
-            ("DÜNYA TV [KOZMOS55]", "https://stream.ftv.az/live/dunyatv.m3u8", "Azərbaycan", "https://i.postimg.cc/7YG1Fbst/D-nya-TV-2019-h-h.png"),
-            ("CBC [KOZMOS55]", "http://flussonic.izone.az:80/cbc/mono.m3u8", "Azərbaycan", "https://i.postimg.cc/BbWhyD53/CBC-Azerbaijan-Logo.png"),
-            ("CBC★ [KOZMOS55]", "http://str.yodacdn.net/cbc/index.m3u8", "Azərbaycan", "https://i.postimg.cc/BbWhyD53/CBC-Azerbaijan-Logo.png"),
-            ("GÜNAZ TV [KOZMOS55]", "https://tv.gunaz.tv/hls/live.m3u8", "Azərbaycan", "https://i.postimg.cc/QCbpbW00/Gunaz-tv-svg.png"),
-            ("QAFQAZ TV [KOZMOS55]", "http://str.yodacdn.net/qafkaz/index.m3u8", "Azərbaycan", "https://i.postimg.cc/SxR28nX0/Qafqaz-TV-2017-h-h.png"),
-            ("NAXÇIVAN TV [KOZMOS55]", "http://str.yodacdn.net/ntv/tracks-v1a1/mono.m3u8", "Azərbaycan", "https://i.postimg.cc/ZY355z4D/In-Shot-20251027-110042165.png"),
-            ("APA TV [KOZMOS55]", "http://stream.apa.tv/apastream/index.m3u8", "Azərbaycan", "https://i.postimg.cc/ry97JfJr/In-Shot-20251027-110247292.png"),
-            ("KANAL 35 [KOZMOS55]", "http://str.yodacdn.net/kanal35/tracks-v1a1/mono.m3u8", "Azərbaycan", "https://i.postimg.cc/C5Cr0Zxt/Kanal-35-loqo.png"),
-            ("KƏPƏZ TV [KOZMOS55]", "http://85.132.78.122:8050/hls/stream/index.m3u8", "Azərbaycan", "https://i.postimg.cc/HkgvYQ7P/K-p-z-TV-2019.png"),
-            ("TV MUSAVAT [KOZMOS55]", "https://stream.musavat.tv/tv.m3u8", "Azərbaycan", "https://i.postimg.cc/pTCb4jcy/logo.png"),
-            ("YENİÇAĞ TV [KOZMOS55]", "https://live.euromediacenter.com/yenicagtv/tracks-v1a1/mono.m3u8", "Azərbaycan", "https://i.postimg.cc/2yvLGLdS/In-Shot-20260602-122025256.png"),
-        ]
-        cursor.executemany("INSERT INTO channels (name, url, category, logo) VALUES (?, ?, ?, ?)", kanallar)
-        conn.commit()
-
+    conn.commit()
     conn.close()
 
 init_db()
 
-def get_db_connection():
+def get_db():
     conn = sqlite3.connect('iptv.db')
     conn.row_factory = sqlite3.Row
     return conn
 
 # ============================================================
-# HTML ŞABLONLARI - KOZMOS55 TASARIMI
+# M3U / XTREAM PARSE
+# ============================================================
+def parse_m3u_content(m3u_text):
+    """M3U içeriğini parse et - live, vod, series ayırt et"""
+    channels = []
+    lines = m3u_text.strip().split('\n')
+    i = 0
+    
+    # Önce #EXTM3U header'ını kontrol et
+    has_extm3u = any(l.strip().startswith('#EXTM3U') for l in lines[:5])
+    
+    while i < len(lines):
+        line = lines[i].strip()
+        if line.startswith('#EXTINF:'):
+            logo = ""
+            category = "Genel"
+            name = "İsimsiz"
+            stream_type = "live"
+            
+            # tvg-logo
+            logo_match = re.search(r'tvg-logo="([^"]*)"', line)
+            if logo_match:
+                logo = logo_match.group(1)
+            
+            # group-title
+            group_match = re.search(r'group-title="([^"]*)"', line)
+            if group_match:
+                category = group_match.group(1)
+            
+            # Kanal adı - son virgülden sonra
+            name_match = re.search(r',(.+)$', line)
+            if name_match:
+                name = name_match.group(1).strip()
+            
+            # Stream tipini belirle (VOD/Series için)
+            if 'movie' in line.lower() or 'vod' in line.lower():
+                stream_type = "vod"
+            elif 'series' in line.lower():
+                stream_type = "series"
+            
+            # Bir sonraki satır URL
+            if i + 1 < len(lines):
+                url = lines[i + 1].strip()
+                if url and not url.startswith('#'):
+                    channels.append({
+                        'name': name,
+                        'url': url,
+                        'category': category,
+                        'logo': logo,
+                        'stream_type': stream_type
+                    })
+                i += 2
+                continue
+        i += 1
+    
+    return channels
+
+def fetch_and_import_m3u(m3u_url):
+    """M3U URL'sinden kanalları çek ve veritabanına ekle"""
+    try:
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+        resp = requests.get(m3u_url, headers=headers, timeout=30)
+        resp.raise_for_status()
+        
+        # Encoding kontrolü
+        resp.encoding = resp.apparent_encoding or 'utf-8'
+        m3u_text = resp.text
+        
+        channels = parse_m3u_content(m3u_text)
+        
+        if not channels:
+            return 0, "M3U içeriğinde kanal bulunamadı"
+        
+        conn = get_db()
+        eklenen = 0
+        for ch in channels:
+            # Aynı URL varsa atla
+            var = conn.execute('SELECT id FROM channels WHERE url = ?', (ch['url'],)).fetchone()
+            if not var:
+                conn.execute('''INSERT INTO channels (name, url, category, logo, stream_type) 
+                                VALUES (?, ?, ?, ?, ?)''',
+                             (ch['name'], ch['url'], ch['category'], ch['logo'], ch['stream_type']))
+                eklenen += 1
+        
+        conn.commit()
+        conn.close()
+        return eklenen, f"{len(channels)} kanal bulundu, {eklenen} yeni eklendi"
+    
+    except requests.exceptions.Timeout:
+        return 0, "M3U linki zaman aşımına uğradı"
+    except requests.exceptions.RequestException as e:
+        return 0, f"M3U linki alınamadı: {str(e)}"
+    except Exception as e:
+        return 0, f"Hata: {str(e)}"
+
+# ============================================================
+# HTML ŞABLONLARI - GÜVEN PANEL
 # ============================================================
 
 LOGIN_HTML = '''
@@ -111,197 +161,179 @@ LOGIN_HTML = '''
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kozmos55 - IPTV</title>
+    <title>GÜVEN PANEL - IPTV</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;700;900&display=swap');
         * { margin:0; padding:0; box-sizing:border-box; }
         body {
-            background: #050508;
+            background: #0a0a0f;
             min-height: 100vh;
             display: flex;
             align-items: center;
             justify-content: center;
             font-family: 'Segoe UI', sans-serif;
-            background-image:
-                radial-gradient(ellipse at 30% 50%, rgba(0,255,102,0.04) 0%, transparent 60%),
-                radial-gradient(ellipse at 70% 50%, rgba(0,200,80,0.03) 0%, transparent 60%);
+            background-image: 
+                linear-gradient(135deg, rgba(255,0,0,0.02) 0%, transparent 50%, rgba(255,255,255,0.01) 100%);
             position: relative;
             overflow: hidden;
         }
         body::before {
-            content: 'KOZMOS55';
+            content: 'GÜVEN';
             position: fixed;
-            top: -50%; left: -50%;
-            width: 200%; height: 200%;
-            font-size: 30rem;
+            top: -30%; right: -10%;
+            font-size: 25rem;
             font-weight: 900;
-            color: rgba(0,255,102,0.015);
+            color: rgba(255,0,0,0.02);
             pointer-events: none;
-            font-family: 'Orbitron', monospace;
-            transform: rotate(-15deg);
-            letter-spacing: 20px;
+            font-family: 'Barlow Condensed', sans-serif;
+            transform: rotate(15deg);
+            letter-spacing: 10px;
+        }
+        body::after {
+            content: 'PANEL';
+            position: fixed;
+            bottom: -20%; left: -5%;
+            font-size: 18rem;
+            font-weight: 900;
+            color: rgba(255,255,255,0.01);
+            pointer-events: none;
+            font-family: 'Barlow Condensed', sans-serif;
+            transform: rotate(-10deg);
+            letter-spacing: 15px;
         }
         .login-card {
-            background: rgba(8,8,14,0.96);
-            border: 1px solid rgba(0,255,102,0.12);
-            border-radius: 20px;
-            padding: 2.8rem 2.2rem;
+            background: rgba(12,12,20,0.97);
+            border: 1px solid rgba(255,0,0,0.1);
+            border-radius: 16px;
+            padding: 2.5rem 2rem;
             width: 420px;
             backdrop-filter: blur(20px);
-            box-shadow: 0 30px 80px rgba(0,0,0,0.7), 0 0 50px rgba(0,255,102,0.03);
+            box-shadow: 0 30px 80px rgba(0,0,0,0.8), 0 0 30px rgba(255,0,0,0.02);
             position: relative;
             overflow: hidden;
         }
-        .login-card::after {
+        .login-card::before {
             content: '';
             position: absolute;
             top: 0; left: 0; right: 0;
             height: 2px;
-            background: linear-gradient(90deg, transparent, #00ff66, transparent);
-            animation: scanLine 3s ease-in-out infinite;
-        }
-        @keyframes scanLine {
-            0% { opacity: 0.3; }
-            50% { opacity: 1; }
-            100% { opacity: 0.3; }
+            background: linear-gradient(90deg, transparent, #ff0000, transparent);
         }
         .brand-icon {
-            width: 80px; height: 80px;
+            width: 75px; height: 75px;
             margin: 0 auto 12px;
-            position: relative;
             display: flex;
             align-items: center;
             justify-content: center;
-        }
-        .brand-icon .outer {
-            position: absolute;
-            width: 100%; height: 100%;
-            border: 2px solid rgba(0,255,102,0.2);
+            background: linear-gradient(135deg, rgba(255,0,0,0.08), rgba(255,255,255,0.02));
             border-radius: 50%;
-            animation: pulseRing 3s ease-in-out infinite;
-        }
-        .brand-icon .inner {
-            width: 55px; height: 55px;
-            background: linear-gradient(135deg, rgba(0,255,102,0.12), rgba(0,200,80,0.05));
-            border-radius: 50%;
-            display: flex; align-items: center; justify-content: center;
-            font-size: 26px;
-            color: #00ff66;
-            border: 1px solid rgba(0,255,102,0.15);
-        }
-        @keyframes pulseRing {
-            0% { transform: scale(1); opacity: 0.5; }
-            50% { transform: scale(1.08); opacity: 0.1; }
-            100% { transform: scale(1); opacity: 0.5; }
+            border: 1px solid rgba(255,0,0,0.15);
+            font-size: 28px;
+            color: #ff0000;
         }
         .brand-name {
-            font-family: 'Orbitron', monospace;
-            font-size: 2.2rem;
+            font-family: 'Barlow Condensed', sans-serif;
+            font-size: 2.8rem;
             font-weight: 900;
             letter-spacing: 8px;
-            color: #00ff66;
             text-align: center;
-            text-shadow: 0 0 30px rgba(0,255,102,0.15);
+            color: #fff;
+            text-shadow: 0 0 20px rgba(255,0,0,0.08);
         }
+        .brand-name span { color: #ff0000; }
         .brand-sub {
             text-align: center;
-            color: #2a2a2a;
+            color: #333;
             font-size: 0.7rem;
-            letter-spacing: 12px;
+            letter-spacing: 6px;
             text-transform: uppercase;
-            margin-bottom: 28px;
-            font-weight: 300;
+            margin-bottom: 24px;
         }
         .form-control {
             background: rgba(255,255,255,0.03);
             border: 1px solid rgba(255,255,255,0.06);
-            border-radius: 10px;
+            border-radius: 8px;
             color: #ccc;
-            padding: 13px 16px;
-            font-size: 0.9rem;
+            padding: 12px 16px;
+            font-size: 0.85rem;
             transition: all 0.3s;
         }
         .form-control:focus {
             background: rgba(255,255,255,0.05);
-            border-color: #00ff66;
-            box-shadow: 0 0 25px rgba(0,255,102,0.08);
+            border-color: #ff0000;
+            box-shadow: 0 0 20px rgba(255,0,0,0.06);
             color: #fff;
         }
         .form-control::placeholder { color: #333; }
-        .form-label { color: #555; font-size: 0.75rem; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; }
-        .input-group-icon { position: relative; }
-        .input-group-icon i {
+        .form-label { color: #555; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; }
+        .input-icon { position: relative; }
+        .input-icon i {
             position: absolute;
             left: 14px;
             top: 50%;
             transform: translateY(-50%);
             color: #333;
-            font-size: 0.9rem;
+            font-size: 0.85rem;
             z-index: 2;
         }
-        .input-group-icon .form-control { padding-left: 40px; }
+        .input-icon .form-control { padding-left: 38px; }
         .btn-login {
-            background: linear-gradient(135deg, #00ff66, #00cc52);
+            background: linear-gradient(135deg, #cc0000, #ff0000);
             border: none;
-            color: #000;
-            font-weight: 800;
-            letter-spacing: 4px;
-            padding: 13px;
-            border-radius: 10px;
+            color: #fff;
+            font-weight: 700;
+            letter-spacing: 3px;
+            padding: 12px;
+            border-radius: 8px;
             transition: all 0.3s;
             font-size: 0.85rem;
             text-transform: uppercase;
-            font-family: 'Orbitron', monospace;
         }
         .btn-login:hover {
             transform: translateY(-2px);
-            box-shadow: 0 10px 35px rgba(0,255,102,0.25);
-            color: #000;
+            box-shadow: 0 8px 30px rgba(255,0,0,0.2);
+            color: #fff;
         }
-        .login-footer { text-align: center; margin-top: 20px; color: #1a1a1a; font-size: 0.7rem; letter-spacing: 2px; }
-        .error-alert {
-            background: rgba(255,0,50,0.06);
-            border: 1px solid rgba(255,0,50,0.1);
-            color: #ff4466;
-            border-radius: 8px;
-            padding: 10px 14px;
-            font-size: 0.8rem;
-            text-align: center;
-            margin-bottom: 16px;
-        }
+        .footer-text { text-align: center; margin-top: 18px; color: #1a1a1a; font-size: 0.7rem; letter-spacing: 2px; }
     </style>
 </head>
 <body>
     <div class="login-card">
-        <div class="brand-icon">
-            <div class="outer"></div>
-            <div class="inner"><i class="fas fa-satellite-dish"></i></div>
-        </div>
-        <div class="brand-name">KOZMOS55</div>
-        <div class="brand-sub">Premium IPTV</div>
+        <div class="brand-icon"><i class="fas fa-shield-halved"></i></div>
+        <div class="brand-name">GÜVEN <span>PANEL</span></div>
+        <div class="brand-sub">Premium IPTV Platform</div>
         {% if error %}
-        <div class="error-alert"><i class="fas fa-exclamation-circle me-1"></i>{{ error }}</div>
+        <div class="alert" style="background:rgba(255,0,0,0.06); border:1px solid rgba(255,0,0,0.1); color:#ff4444; border-radius:8px; padding:10px 14px; font-size:0.8rem; text-align:center; margin-bottom:16px;">
+            <i class="fas fa-exclamation-circle me-1"></i>{{ error }}
+        </div>
         {% endif %}
         <form method="POST">
             <div class="mb-3">
-                <label class="form-label"><i class="fas fa-user me-1"></i>Kullanıcı Adı</label>
-                <div class="input-group-icon">
+                <label class="form-label"><i class="fas fa-server me-1"></i>Server</label>
+                <div class="input-icon">
+                    <i class="fas fa-globe"></i>
+                    <input type="text" name="server_url" class="form-control" required placeholder="ornek.com:8080">
+                </div>
+            </div>
+            <div class="mb-3">
+                <label class="form-label"><i class="fas fa-user me-1"></i>Kullanıcı</label>
+                <div class="input-icon">
                     <i class="fas fa-user"></i>
-                    <input type="text" name="username" class="form-control" required autocomplete="off" placeholder="kullanıcı adı">
+                    <input type="text" name="username" class="form-control" required placeholder="kullanıcı adı">
                 </div>
             </div>
             <div class="mb-4">
                 <label class="form-label"><i class="fas fa-lock me-1"></i>Şifre</label>
-                <div class="input-group-icon">
+                <div class="input-icon">
                     <i class="fas fa-lock"></i>
                     <input type="password" name="password" class="form-control" required placeholder="••••••••">
                 </div>
             </div>
-            <button type="submit" class="btn btn-login w-100">Giriş</button>
+            <button type="submit" class="btn btn-login w-100">GİRİŞ YAP</button>
         </form>
-        <div class="login-footer">KOZMOS55 &bull; v2.0</div>
+        <div class="footer-text">GÜVEN PANEL v2.0</div>
     </div>
 </body>
 </html>
@@ -313,16 +345,16 @@ INDEX_HTML = '''
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kozmos55 Player</title>
+    <title>GÜVEN PANEL - Player</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://vjs.zencdn.net/7.20.3/video-js.css" rel="stylesheet" />
     <script src="https://vjs.zencdn.net/7.20.3/video.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;700;900&display=swap');
         * { margin:0; padding:0; box-sizing:border-box; }
         body {
-            background: #050508;
+            background: #0a0a0f;
             color: #ccc;
             font-family: 'Segoe UI', sans-serif;
             overflow: hidden;
@@ -330,164 +362,154 @@ INDEX_HTML = '''
         }
         ::-webkit-scrollbar { width: 3px; }
         ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: rgba(0,255,102,0.2); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,0,0,0.15); border-radius: 4px; }
 
-        /* SIDEBAR */
         .sidebar {
-            background: rgba(6,6,12,0.98);
-            border-right: 1px solid rgba(0,255,102,0.06);
+            background: rgba(8,8,15,0.98);
+            border-right: 1px solid rgba(255,0,0,0.05);
             height: 100vh;
             overflow-y: auto;
             padding: 0;
         }
         .sidebar-header {
-            padding: 20px 16px 12px;
-            border-bottom: 1px solid rgba(0,255,102,0.06);
+            padding: 18px 16px 10px;
+            border-bottom: 1px solid rgba(255,0,0,0.05);
         }
         .sidebar-brand {
-            font-family: 'Orbitron', monospace;
-            font-size: 1.2rem;
+            font-family: 'Barlow Condensed', sans-serif;
+            font-size: 1.4rem;
             font-weight: 900;
             letter-spacing: 4px;
-            color: #00ff66;
-            text-shadow: 0 0 20px rgba(0,255,102,0.1);
+            color: #fff;
         }
-        .sidebar-brand small { font-size: 0.55rem; color: #2a2a2a; letter-spacing: 6px; margin-left: 4px; }
+        .sidebar-brand span { color: #ff0000; }
+        .sidebar-brand small { font-size: 0.5rem; color: #333; letter-spacing: 4px; margin-left: 4px; }
         .sidebar-user {
-            padding: 10px 16px;
-            background: rgba(0,255,102,0.02);
+            padding: 10px 14px;
+            background: rgba(255,0,0,0.02);
             margin: 8px 12px;
-            border-radius: 8px;
-            border-left: 2px solid rgba(0,255,102,0.15);
-            font-size: 0.78rem;
+            border-radius: 6px;
+            border-left: 2px solid rgba(255,0,0,0.1);
+            font-size: 0.75rem;
         }
-        .sidebar-user .label { color: #444; font-size: 0.65rem; text-transform: uppercase; letter-spacing: 1px; }
-        .sidebar-user .value { color: #00ff66; font-weight: 600; }
+        .sidebar-user .label { color: #444; font-size: 0.6rem; text-transform: uppercase; }
+        .sidebar-user .value { color: #ff4444; font-weight: 600; }
         .cat-btn {
             display: block;
-            padding: 9px 18px;
+            padding: 8px 16px;
             color: #555;
             text-decoration: none;
-            font-size: 0.82rem;
+            font-size: 0.8rem;
             border-left: 2px solid transparent;
             transition: all 0.2s;
-            margin: 1px 0;
         }
         .cat-btn:hover, .cat-btn.active {
-            color: #00ff66;
-            background: rgba(0,255,102,0.03);
-            border-left-color: #00ff66;
+            color: #ff4444;
+            background: rgba(255,0,0,0.02);
+            border-left-color: #ff0000;
         }
-        .cat-btn i { width: 18px; margin-right: 8px; }
+        .cat-btn i { width: 16px; margin-right: 6px; font-size: 0.75rem; }
 
-        /* MAIN */
-        .main-area {
-            height: 100vh;
-            padding: 0;
-            overflow-y: auto;
-        }
+        .main-area { height: 100vh; padding: 0; overflow-y: auto; }
         .player-wrap {
             background: #000;
-            border-bottom: 1px solid rgba(0,255,102,0.06);
+            border-bottom: 1px solid rgba(255,0,0,0.04);
             position: relative;
         }
-        .player-wrap .ratio { border-radius: 0 !important; }
         #playing-title {
             position: absolute;
-            bottom: 14px;
-            left: 18px;
+            bottom: 12px;
+            left: 16px;
             color: #fff;
-            font-size: 0.85rem;
+            font-size: 0.8rem;
             font-weight: 600;
-            text-shadow: 0 2px 12px rgba(0,0,0,0.9);
+            text-shadow: 0 2px 10px rgba(0,0,0,0.9);
             background: rgba(0,0,0,0.6);
-            padding: 5px 16px;
-            border-radius: 20px;
-            border-left: 2px solid #00ff66;
+            padding: 4px 14px;
+            border-radius: 16px;
+            border-left: 2px solid #ff0000;
             pointer-events: none;
             z-index: 2;
-            backdrop-filter: blur(5px);
         }
-        .channels-section { padding: 18px 22px; }
+        .channels-section { padding: 16px 20px; }
         .channels-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 14px;
+            margin-bottom: 12px;
         }
         .channels-header h5 {
-            color: #00ff66;
+            color: #fff;
             font-weight: 600;
-            font-size: 0.95rem;
+            font-size: 0.9rem;
             margin: 0;
-            font-family: 'Orbitron', monospace;
-            letter-spacing: 1px;
         }
-        .channels-header .count { color: #333; font-size: 0.78rem; }
+        .channels-header h5 span { color: #ff0000; }
+        .channels-header .count { color: #333; font-size: 0.75rem; }
         .channel-card {
-            background: rgba(255,255,255,0.02);
+            background: rgba(255,255,255,0.01);
             border: 1px solid rgba(255,255,255,0.03);
-            border-radius: 10px;
-            padding: 9px 12px;
+            border-radius: 8px;
+            padding: 8px 12px;
             cursor: pointer;
-            transition: all 0.25s;
-            margin-bottom: 5px;
+            transition: all 0.2s;
+            margin-bottom: 4px;
         }
         .channel-card:hover {
-            background: rgba(0,255,102,0.03);
-            border-color: rgba(0,255,102,0.12);
-            transform: translateX(3px);
+            background: rgba(255,0,0,0.02);
+            border-color: rgba(255,0,0,0.08);
+            transform: translateX(2px);
         }
-        .channel-card .ch-name {
-            font-weight: 500;
-            font-size: 0.82rem;
-            color: #bbb;
-        }
-        .channel-card .ch-cat {
-            font-size: 0.65rem;
-            color: #00ff66;
-            opacity: 0.4;
-        }
+        .channel-card .ch-name { font-weight: 500; font-size: 0.8rem; color: #bbb; }
+        .channel-card .ch-cat { font-size: 0.6rem; color: #ff4444; opacity: 0.4; }
         .channel-card img {
-            width: 26px;
-            height: 26px;
-            object-fit: contain;
-            border-radius: 4px;
-            margin-right: 10px;
+            width: 22px; height: 22px; object-fit: contain;
+            border-radius: 3px; margin-right: 8px;
         }
         .top-btn {
-            background: rgba(255,255,255,0.03);
-            border: 1px solid rgba(255,255,255,0.06);
+            background: rgba(255,255,255,0.02);
+            border: 1px solid rgba(255,255,255,0.05);
             color: #888;
-            border-radius: 6px;
-            padding: 4px 12px;
-            font-size: 0.7rem;
+            border-radius: 5px;
+            padding: 3px 10px;
+            font-size: 0.65rem;
             text-decoration: none;
             transition: all 0.2s;
         }
-        .top-btn:hover { background: rgba(255,255,255,0.06); color: #ccc; }
-        .top-btn.admin { border-color: rgba(255,193,7,0.2); color: #ffc107; }
-        .top-btn.admin:hover { background: rgba(255,193,7,0.08); }
-        .top-btn.logout { border-color: rgba(255,0,0,0.15); color: #f55; }
-        .top-btn.logout:hover { background: rgba(255,0,0,0.06); }
+        .top-btn:hover { background: rgba(255,255,255,0.04); color: #ccc; }
+        .top-btn.admin { border-color: rgba(255,0,0,0.15); color: #ff4444; }
+        .top-btn.admin:hover { background: rgba(255,0,0,0.04); }
+        .top-btn.logout { border-color: rgba(255,255,255,0.05); }
+
+        /* Stream tipi badge */
+        .type-badge {
+            font-size: 0.55rem;
+            padding: 1px 6px;
+            border-radius: 3px;
+            margin-left: 4px;
+        }
+        .type-live { background: rgba(0,200,80,0.1); color: #00cc44; }
+        .type-vod { background: rgba(255,200,0,0.1); color: #ffcc00; }
+        .type-series { background: rgba(0,150,255,0.1); color: #0099ff; }
     </style>
 </head>
 <body>
     <div class="container-fluid h-100">
         <div class="row h-100">
-            <!-- SIDEBAR -->
             <div class="col-md-2 sidebar">
                 <div class="sidebar-header">
-                    <div class="sidebar-brand">KOZMOS<small>55</small></div>
+                    <div class="sidebar-brand">GÜVEN <span>PANEL</span><small>IPTV</small></div>
                 </div>
                 <div class="sidebar-user">
                     <div class="label"><i class="fas fa-user me-1"></i>Abone</div>
                     <div class="value">{{ session['user'] }}</div>
+                    <div class="label mt-2"><i class="fas fa-server me-1"></i>Server</div>
+                    <div class="value" style="font-size:0.65rem; word-break:break-all;">{{ session.get('server', '-') }}</div>
                     <div class="label mt-2"><i class="far fa-clock me-1"></i>Bitiş</div>
                     <div class="value">{{ expiry }}</div>
                 </div>
                 <a href="/index?category=Hepsi" class="cat-btn {% if current_category == 'Hepsi' %}active{% endif %}">
-                    <i class="fas fa-th-large"></i> Tüm Kanallar
+                    <i class="fas fa-th-large"></i> Tümü
                 </a>
                 {% for cat in categories %}
                 <a href="/index?category={{ cat.category }}" class="cat-btn {% if current_category == cat.category %}active{% endif %}">
@@ -496,11 +518,10 @@ INDEX_HTML = '''
                 {% endfor %}
             </div>
 
-            <!-- MAIN -->
             <div class="col-md-10 main-area">
                 <div class="player-wrap">
                     <div class="ratio ratio-16x9">
-                        <video id="my-video" class="video-js vjs-default-skin vjs-big-play-centered" controls preload="auto" data-setup='{}'>
+                        <video id="my-video" class="video-js vjs-default-skin vjs-big-play-centered" controls preload="auto" data-setup='{"html5":{"hls":{"overrideNative":true}}}'>
                             <source id="video-source" src="" type="application/x-mpegURL">
                         </video>
                     </div>
@@ -509,13 +530,13 @@ INDEX_HTML = '''
 
                 <div class="channels-section">
                     <div class="channels-header">
-                        <h5><i class="fas fa-list me-2"></i>{{ current_category }}</h5>
+                        <h5><i class="fas fa-list me-2"></i><span>{{ current_category }}</span></h5>
                         <div>
                             {% if session['user'] == 'admin' %}
                             <a href="/admin" class="top-btn admin me-1"><i class="fas fa-cog me-1"></i>Panel</a>
                             {% endif %}
                             <a href="/logout" class="top-btn logout"><i class="fas fa-sign-out-alt me-1"></i>Çıkış</a>
-                            <span class="count ms-2">{{ channels|length }} kanal</span>
+                            <span class="count ms-2">{{ channels|length }}</span>
                         </div>
                     </div>
                     <div class="row g-1">
@@ -526,7 +547,11 @@ INDEX_HTML = '''
                                 <img src="{{ channel.logo }}" alt="" onerror="this.style.display='none'">
                                 {% endif %}
                                 <div class="flex-grow-1 min-width-0">
-                                    <div class="ch-name text-truncate">{{ channel.name }}</div>
+                                    <div class="ch-name text-truncate">
+                                        {{ channel.name }}
+                                        {% if channel.stream_type == 'vod' %}<span class="type-badge type-vod">VOD</span>{% endif %}
+                                        {% if channel.stream_type == 'series' %}<span class="type-badge type-series">SERIES</span>{% endif %}
+                                    </div>
                                     <div class="ch-cat">{{ channel.category }}</div>
                                 </div>
                             </div>
@@ -541,10 +566,22 @@ INDEX_HTML = '''
     <script>
         function changeChannel(url, name) {
             var player = videojs('my-video');
-            player.src({ src: url, type: 'application/x-mpegURL' });
+            // M3U8 için daha iyi hls.js entegrasyonu
+            player.src({ 
+                src: url, 
+                type: 'application/x-mpegURL'
+            });
             player.play();
             document.getElementById('playing-title').innerHTML = '<i class="fas fa-play me-1"></i>' + name;
         }
+        
+        // Video.js hata yönetimi
+        document.addEventListener('DOMContentLoaded', function() {
+            var player = videojs('my-video');
+            player.on('error', function() {
+                console.log('Stream hatası, yeniden deneniyor...');
+            });
+        });
     </script>
 </body>
 </html>
@@ -556,258 +593,237 @@ ADMIN_HTML = '''
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kozmos55 - Yönetim</title>
+    <title>GÜVEN PANEL - Yönetim</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;700;900&display=swap');
         * { margin:0; padding:0; box-sizing:border-box; }
-        body { background: #050508; color: #ccc; font-family: 'Segoe UI', sans-serif; }
+        body { background: #0a0a0f; color: #ccc; font-family: 'Segoe UI', sans-serif; }
+        
         .admin-header {
-            background: rgba(6,6,12,0.98);
-            border-bottom: 1px solid rgba(0,255,102,0.06);
-            padding: 14px 24px;
+            background: rgba(8,8,15,0.98);
+            border-bottom: 1px solid rgba(255,0,0,0.05);
+            padding: 12px 24px;
             display: flex;
             justify-content: space-between;
             align-items: center;
         }
         .admin-header h3 {
-            font-family: 'Orbitron', monospace;
+            font-family: 'Barlow Condensed', sans-serif;
             font-weight: 900;
             letter-spacing: 4px;
-            color: #00ff66;
+            color: #fff;
             margin: 0;
-            font-size: 1.2rem;
-            text-shadow: 0 0 20px rgba(0,255,102,0.08);
+            font-size: 1.3rem;
         }
+        .admin-header h3 span { color: #ff0000; }
+        
         .card-glass {
-            background: rgba(8,8,14,0.94);
-            border: 1px solid rgba(0,255,102,0.06);
-            border-radius: 14px;
+            background: rgba(10,10,18,0.94);
+            border: 1px solid rgba(255,0,0,0.05);
+            border-radius: 12px;
             backdrop-filter: blur(10px);
-            box-shadow: 0 8px 30px rgba(0,0,0,0.3);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.3);
         }
         .card-glass .card-title {
-            color: #00ff66;
+            color: #fff;
             font-weight: 600;
-            font-size: 0.9rem;
-            letter-spacing: 2px;
-            border-bottom: 1px solid rgba(0,255,102,0.06);
-            padding-bottom: 12px;
-            font-family: 'Orbitron', monospace;
+            font-size: 0.85rem;
+            letter-spacing: 1px;
+            border-bottom: 1px solid rgba(255,0,0,0.05);
+            padding-bottom: 10px;
         }
-        .form-control {
+        .card-glass .card-title i { color: #ff0000; }
+        
+        .form-control, .form-select {
             background: rgba(255,255,255,0.03);
-            border: 1px solid rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.04);
             border-radius: 8px;
             color: #ccc;
-            padding: 10px 14px;
-            font-size: 0.85rem;
+            padding: 9px 12px;
+            font-size: 0.82rem;
         }
-        .form-control:focus {
+        .form-control:focus, .form-select:focus {
             background: rgba(255,255,255,0.05);
-            border-color: #00ff66;
-            box-shadow: 0 0 15px rgba(0,255,102,0.06);
+            border-color: #ff0000;
+            box-shadow: 0 0 12px rgba(255,0,0,0.05);
             color: #fff;
         }
-        .form-select {
-            background: rgba(255,255,255,0.03);
-            border: 1px solid rgba(255,255,255,0.05);
-            border-radius: 8px;
-            color: #ccc;
-            padding: 10px 14px;
-            font-size: 0.85rem;
-        }
-        .form-select:focus {
-            border-color: #00ff66;
-            box-shadow: 0 0 15px rgba(0,255,102,0.06);
-        }
-        .form-label { color: #444; font-size: 0.7rem; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; }
-        .btn-primary-cyber {
-            background: linear-gradient(135deg, #00ff66, #00cc52);
+        .form-label { color: #444; font-size: 0.65rem; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; }
+        
+        .btn-prime {
+            background: linear-gradient(135deg, #cc0000, #ff0000);
             border: none;
-            color: #000;
-            font-weight: 800;
-            padding: 10px 20px;
+            color: #fff;
+            font-weight: 700;
+            padding: 9px 18px;
             border-radius: 8px;
-            font-size: 0.8rem;
+            font-size: 0.78rem;
             transition: all 0.3s;
-            letter-spacing: 2px;
-            font-family: 'Orbitron', monospace;
+            letter-spacing: 1px;
         }
-        .btn-primary-cyber:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(0,255,102,0.2); color: #000; }
-        .btn-danger-cyber {
-            background: rgba(255,0,50,0.06);
-            border: 1px solid rgba(255,0,50,0.1);
-            color: #f55;
-            border-radius: 6px;
-            padding: 4px 12px;
-            font-size: 0.7rem;
+        .btn-prime:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(255,0,0,0.15); color: #fff; }
+        .btn-prime-sm {
+            background: rgba(255,0,0,0.06);
+            border: 1px solid rgba(255,0,0,0.1);
+            color: #ff4444;
+            border-radius: 5px;
+            padding: 3px 10px;
+            font-size: 0.65rem;
             transition: all 0.2s;
         }
-        .btn-danger-cyber:hover { background: rgba(255,0,50,0.1); color: #f55; }
-        .table-cyber { color: #999; font-size: 0.8rem; margin: 0; }
+        .btn-prime-sm:hover { background: rgba(255,0,0,0.1); color: #ff4444; }
+        
+        .table-cyber { color: #888; font-size: 0.78rem; margin: 0; }
         .table-cyber thead th {
-            border-bottom: 1px solid rgba(0,255,102,0.05);
+            border-bottom: 1px solid rgba(255,0,0,0.04);
             color: #444;
             font-weight: 600;
             text-transform: uppercase;
-            font-size: 0.65rem;
+            font-size: 0.6rem;
             letter-spacing: 1px;
-            padding: 8px 10px;
+            padding: 6px 10px;
         }
-        .table-cyber td { border-bottom: 1px solid rgba(255,255,255,0.02); padding: 8px 10px; vertical-align: middle; }
-        .table-cyber tr:hover { background: rgba(0,255,102,0.02); }
+        .table-cyber td { border-bottom: 1px solid rgba(255,255,255,0.02); padding: 6px 10px; vertical-align: middle; }
+        .table-cyber tr:hover { background: rgba(255,0,0,0.01); }
+        
         .badge-cat {
-            background: rgba(0,255,102,0.06);
-            color: #00ff66;
-            padding: 2px 10px;
-            border-radius: 20px;
-            font-size: 0.65rem;
+            background: rgba(255,0,0,0.05);
+            color: #ff4444;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.6rem;
         }
+        
         .msg-alert {
-            background: rgba(0,255,102,0.04);
-            border: 1px solid rgba(0,255,102,0.08);
-            color: #00ff66;
+            background: rgba(255,0,0,0.03);
+            border: 1px solid rgba(255,0,0,0.06);
+            color: #ff4444;
             border-radius: 8px;
-            padding: 10px 16px;
-            font-size: 0.82rem;
+            padding: 8px 14px;
+            font-size: 0.8rem;
         }
+        
         .stat-box {
             text-align: center;
-            padding: 10px;
-            border-radius: 8px;
-            background: rgba(0,255,102,0.02);
-            border: 1px solid rgba(0,255,102,0.04);
+            padding: 8px;
+            border-radius: 6px;
+            background: rgba(255,0,0,0.02);
+            border: 1px solid rgba(255,0,0,0.03);
         }
-        .stat-box .number { font-family: 'Orbitron', monospace; color: #00ff66; font-size: 1.6rem; font-weight: 900; }
-        .stat-box .label { color: #444; font-size: 0.65rem; text-transform: uppercase; letter-spacing: 1px; margin-top: 4px; }
+        .stat-box .number { font-family: 'Barlow Condensed', sans-serif; color: #ff0000; font-size: 1.8rem; font-weight: 900; }
+        .stat-box .label { color: #444; font-size: 0.6rem; text-transform: uppercase; letter-spacing: 1px; }
     </style>
 </head>
 <body>
     <div class="admin-header">
-        <h3><i class="fas fa-shield-alt me-2"></i>KOZMOS55 PANEL</h3>
-        <a href="/index" class="btn btn-primary-cyber btn-sm"><i class="fas fa-play me-1"></i>Oyuncu</a>
+        <h3><i class="fas fa-shield-halved me-2"></i>GÜVEN <span>PANEL</span></h3>
+        <a href="/index" class="btn btn-prime btn-sm"><i class="fas fa-play me-1"></i>Oyuncu</a>
     </div>
 
     <div class="container-fluid p-4">
         {% if msg %}
-        <div class="msg-alert mb-4"><i class="fas fa-check-circle me-1"></i>{{ msg }}</div>
+        <div class="msg-alert mb-3"><i class="fas fa-check-circle me-1"></i>{{ msg }}</div>
         {% endif %}
 
-        <!-- İSTATİSTİKLER -->
-        <div class="row g-3 mb-4">
-            <div class="col-md-3">
-                <div class="stat-box">
-                    <div class="number">{{ users|length }}</div>
-                    <div class="label">Kullanıcı</div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="stat-box">
-                    <div class="number">{{ channels|length }}</div>
-                    <div class="label">Kanal</div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="stat-box">
-                    <div class="number">{{ categories|length }}</div>
-                    <div class="label">Kategori</div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="stat-box">
-                    <div class="number">55</div>
-                    <div class="label">Kozmos</div>
-                </div>
-            </div>
+        <!-- İSTATİSTİK -->
+        <div class="row g-2 mb-4">
+            <div class="col-md-3"><div class="stat-box"><div class="number">{{ users|length }}</div><div class="label">Kullanıcı</div></div></div>
+            <div class="col-md-3"><div class="stat-box"><div class="number">{{ channels|length }}</div><div class="label">Kanal</div></div></div>
+            <div class="col-md-3"><div class="stat-box"><div class="number">{{ categories|length }}</div><div class="label">Kategori</div></div></div>
+            <div class="col-md-3"><div class="stat-box"><div class="number">GÜVEN</div><div class="label">Panel</div></div></div>
         </div>
 
-        <div class="row g-4">
+        <div class="row g-3">
             <!-- KULLANICI ÜRET -->
             <div class="col-lg-4">
                 <div class="card card-glass p-4 h-100">
-                    <div class="card-title"><i class="fas fa-user-plus me-2"></i>Kullanıcı Üret</div>
+                    <div class="card-title"><i class="fas fa-user-plus me-2"></i>Kullanıcı + Server Oluştur</div>
                     <form method="POST">
                         <input type="hidden" name="action" value="add_user">
-                        <div class="mb-3">
+                        <div class="mb-2">
                             <label class="form-label">Kullanıcı Adı</label>
-                            <input type="text" name="username" class="form-control" required autocomplete="off" placeholder="kullanıcı adı">
+                            <input type="text" name="username" class="form-control" required placeholder="kullanıcı">
                         </div>
-                        <div class="mb-3">
+                        <div class="mb-2">
                             <label class="form-label">Şifre</label>
-                            <input type="text" name="password" class="form-control" required placeholder="••••••••">
+                            <input type="text" name="password" class="form-control" required placeholder="••••••">
                         </div>
-                        <div class="mb-3">
+                        <div class="mb-2">
+                            <label class="form-label">Server URL</label>
+                            <input type="text" name="server_url" class="form-control" required placeholder="https://sizinpanel.com:8080">
+                        </div>
+                        <div class="mb-2">
                             <label class="form-label">Bitiş Süresi</label>
                             <select name="expiry_option" class="form-select">
-                                <option value="1">1 Günlük</option>
-                                <option value="3">3 Günlük</option>
-                                <option value="7">7 Günlük</option>
-                                <option value="15">15 Günlük</option>
-                                <option value="30" selected>30 Günlük</option>
-                                <option value="90">3 Aylık</option>
-                                <option value="180">6 Aylık</option>
-                                <option value="365">1 Yıllık</option>
+                                <option value="1">1 Gün</option>
+                                <option value="3">3 Gün</option>
+                                <option value="7">7 Gün</option>
+                                <option value="15">15 Gün</option>
+                                <option value="30" selected>30 Gün</option>
+                                <option value="90">3 Ay</option>
+                                <option value="180">6 Ay</option>
+                                <option value="365">1 Yıl</option>
                                 <option value="0">Sınırsız</option>
                             </select>
                         </div>
-                        <button type="submit" class="btn btn-primary-cyber w-100">Oluştur</button>
+                        <button type="submit" class="btn btn-prime w-100">Kullanıcı Oluştur</button>
                     </form>
                 </div>
             </div>
 
-            <!-- KANAL EKLE -->
+            <!-- M3U İMPORT -->
             <div class="col-lg-4">
                 <div class="card card-glass p-4 h-100">
-                    <div class="card-title"><i class="fas fa-plus-circle me-2"></i>Kanal Ekle</div>
+                    <div class="card-title"><i class="fas fa-upload me-2"></i>M3U Kanal İmport</div>
                     <form method="POST">
-                        <input type="hidden" name="action" value="add_channel">
-                        <div class="mb-3">
-                            <label class="form-label">Kanal Adı</label>
-                            <input type="text" name="name" class="form-control" required placeholder="TRT 1">
+                        <input type="hidden" name="action" value="import_m3u">
+                        <div class="mb-2">
+                            <label class="form-label">M3U Linki (URL)</label>
+                            <input type="url" name="m3u_url" class="form-control" placeholder="https://ornek.com/liste.m3u">
                         </div>
-                        <div class="mb-3">
-                            <label class="form-label">M3U8 Linki</label>
-                            <input type="url" name="url" class="form-control" required placeholder="http://...m3u8">
+                        <div class="mb-2">
+                            <label class="form-label">veya M3U İçeriğini Yapıştır</label>
+                            <textarea name="m3u_content" class="form-control" rows="4" placeholder="#EXTM3U..."></textarea>
                         </div>
-                        <div class="mb-3">
-                            <label class="form-label">Kategori</label>
-                            <input type="text" name="category" class="form-control" required placeholder="Spor, Sinema...">
-                        </div>
-                        <button type="submit" class="btn btn-primary-cyber w-100">Kaydet</button>
+                        <button type="submit" class="btn btn-prime w-100">Kanalları İçe Aktar</button>
                     </form>
+                    <hr style="border-color:rgba(255,255,255,0.03); margin:12px 0;">
+                    <p class="small text-muted mb-0">VOD, Series ve Live kanalları otomatik algılanır.</p>
                 </div>
             </div>
 
-            <!-- HIZLI BİLGİ -->
+            <!-- BİLGİ -->
             <div class="col-lg-4">
                 <div class="card card-glass p-4 h-100 d-flex align-items-center justify-content-center text-center">
-                    <div style="font-family:'Orbitron',monospace; font-size:3rem; color:#00ff66; opacity:0.15;">55</div>
-                    <div style="color:#333; font-size:0.8rem; letter-spacing:4px; text-transform:uppercase;">Kozmos55 Premium</div>
-                    <div style="color:#222; font-size:0.7rem; margin-top:8px;">IPTV Management Panel</div>
+                    <div style="font-family:'Barlow Condensed',sans-serif; font-size:4rem; color:#ff0000; opacity:0.1; font-weight:900;">GV</div>
+                    <div style="color:#333; font-size:0.8rem; letter-spacing:4px; text-transform:uppercase;">Güven Panel</div>
+                    <div style="color:#222; font-size:0.65rem; margin-top:6px;">Server + Kullanıcı Yönetimi</div>
+                    <div style="color:#222; font-size:0.6rem; margin-top:4px;">M3U &bull; XTREAM &bull; IPTV</div>
                 </div>
             </div>
         </div>
 
-        <div class="row g-4 mt-2">
+        <div class="row g-3 mt-3">
             <!-- KULLANICI LİSTESİ -->
             <div class="col-lg-6">
                 <div class="card card-glass p-4">
                     <div class="card-title"><i class="fas fa-users me-2"></i>Kullanıcılar</div>
                     <table class="table table-cyber">
-                        <thead><tr><th>Kullanıcı</th><th>Şifre</th><th>Bitiş</th><th></th></tr></thead>
+                        <thead><tr><th>Kullanıcı</th><th>Şifre</th><th>Server</th><th>Bitiş</th><th></th></tr></thead>
                         <tbody>
                             {% for u in users %}
                             <tr>
                                 <td><i class="fas fa-user me-1" style="color:#333;"></i>{{ u.username }}</td>
                                 <td style="font-family:monospace; color:#555;">{{ u.password }}</td>
+                                <td style="font-size:0.65rem; color:#666; word-break:break-all;">{{ u.server_url }}</td>
                                 <td><span style="color:#ffc107;">{{ u.expiry_date }}</span></td>
                                 <td>
                                     {% if u.username != 'admin' %}
-                                    <a href="/delete_user/{{ u.id }}" class="btn btn-danger-cyber" onclick="return confirm('Emin misin?')"><i class="fas fa-trash"></i></a>
+                                    <a href="/delete_user/{{ u.id }}" class="btn-prime-sm" onclick="return confirm('Emin misin?')"><i class="fas fa-trash"></i></a>
                                     {% else %}
-                                    <span style="color:#333; font-size:0.65rem;">ADMIN</span>
+                                    <span style="color:#333; font-size:0.6rem;">ADMIN</span>
                                     {% endif %}
                                 </td>
                             </tr>
@@ -820,19 +836,17 @@ ADMIN_HTML = '''
             <!-- KANAL LİSTESİ -->
             <div class="col-lg-6">
                 <div class="card card-glass p-4">
-                    <div class="card-title"><i class="fas fa-tv me-2"></i>Kanallar <span style="color:#444; font-weight:400; font-size:0.75rem;">({{ channels|length }})</span></div>
+                    <div class="card-title"><i class="fas fa-tv me-2"></i>Kanallar <span style="color:#444;font-weight:400;font-size:0.7rem;">({{ channels|length }})</span></div>
                     <div style="max-height:350px; overflow-y:auto;">
                         <table class="table table-cyber">
-                            <thead><tr><th>Kanal</th><th>Kategori</th><th></th></tr></thead>
+                            <thead><tr><th>Kanal</th><th>Kategori</th><th>Tip</th><th></th></tr></thead>
                             <tbody>
                                 {% for c in channels %}
                                 <tr>
-                                    <td>
-                                        {% if c.logo %}<img src="{{ c.logo }}" style="width:16px; height:16px; object-fit:contain; margin-right:6px;" onerror="this.style.display='none'">{% endif %}
-                                        {{ c.name }}
-                                    </td>
+                                    <td>{% if c.logo %}<img src="{{ c.logo }}" style="width:14px;height:14px;object-fit:contain;margin-right:4px;" onerror="this.style.display='none'">{% endif %}{{ c.name }}</td>
                                     <td><span class="badge-cat">{{ c.category }}</span></td>
-                                    <td><a href="/delete_channel/{{ c.id }}" class="btn btn-danger-cyber" onclick="return confirm('Sil?')"><i class="fas fa-trash"></i></a></td>
+                                    <td style="font-size:0.6rem; color:#555;">{{ c.stream_type }}</td>
+                                    <td><a href="/delete_channel/{{ c.id }}" class="btn-prime-sm" onclick="return confirm('Sil?')"><i class="fas fa-trash"></i></a></td>
                                 </tr>
                                 {% endfor %}
                             </tbody>
@@ -856,10 +870,15 @@ def login():
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
-        conn = get_db_connection()
-        user = conn.execute('SELECT * FROM users WHERE username = ? AND password = ?', (username, password)).fetchone()
+        server_url = request.form['server_url']
+        
+        conn = get_db()
+        user = conn.execute('SELECT * FROM users WHERE username = ? AND password = ?', 
+                           (username, password)).fetchone()
         conn.close()
+        
         if user:
+            # Süre kontrolü
             if user['username'] != 'admin' and user['expiry_date'] != 'Sınırsız':
                 try:
                     exp_date = datetime.strptime(user['expiry_date'], '%Y-%m-%d')
@@ -868,25 +887,37 @@ def login():
                         return render_template_string(LOGIN_HTML, error=error)
                 except ValueError:
                     pass
+            
+            # Server kontrolü (admin hariç)
+            if user['username'] != 'admin' and user['server_url'] != server_url:
+                error = "Server bilgisi hatalı!"
+                return render_template_string(LOGIN_HTML, error=error)
+            
             session['user'] = username
             session['expiry'] = user['expiry_date']
+            session['server'] = user['server_url']
             return redirect(url_for('index'))
         else:
-            error = "Hatalı kullanıcı adı veya şifre!"
+            error = "Kullanıcı adı, şifre veya server hatalı!"
+    
     return render_template_string(LOGIN_HTML, error=error)
 
 @app.route('/index')
 def index():
     if 'user' not in session:
         return redirect(url_for('login'))
+    
     category_filter = request.args.get('category', 'Hepsi')
-    conn = get_db_connection()
-    categories = conn.execute('SELECT DISTINCT category FROM channels').fetchall()
+    conn = get_db()
+    categories = conn.execute('SELECT DISTINCT category FROM channels ORDER BY category').fetchall()
+    
     if category_filter == 'Hepsi':
-        channels = conn.execute('SELECT * FROM channels').fetchall()
+        channels = conn.execute('SELECT * FROM channels ORDER BY category, name').fetchall()
     else:
-        channels = conn.execute('SELECT * FROM channels WHERE category = ?', (category_filter,)).fetchall()
+        channels = conn.execute('SELECT * FROM channels WHERE category = ? ORDER BY name', 
+                               (category_filter,)).fetchall()
     conn.close()
+    
     return render_template_string(INDEX_HTML,
                                   channels=channels,
                                   categories=categories,
@@ -897,14 +928,17 @@ def index():
 def admin():
     if 'user' not in session or session['user'] != 'admin':
         return redirect(url_for('login'))
+    
     msg = None
-    conn = get_db_connection()
-
+    conn = get_db()
+    
     if request.method == 'POST':
         action = request.form.get('action')
+        
         if action == 'add_user':
             username = request.form['username']
             password = request.form['password']
+            server_url = request.form['server_url']
             expiry_option = request.form['expiry_option']
             
             if expiry_option == '0':
@@ -914,32 +948,50 @@ def admin():
                 expiry_date = (datetime.now() + timedelta(days=days)).strftime('%Y-%m-%d')
             
             try:
-                conn.execute('INSERT INTO users (username, password, expiry_date) VALUES (?, ?, ?)',
-                             (username, password, expiry_date))
+                conn.execute('INSERT INTO users (username, password, server_url, expiry_date) VALUES (?, ?, ?, ?)',
+                            (username, password, server_url, expiry_date))
                 conn.commit()
-                msg = f"Kullanıcı '{username}' oluşturuldu. Bitiş: {expiry_date}"
+                msg = f"Kullanıcı '{username}' oluşturuldu. Server: {server_url} - Bitiş: {expiry_date}"
             except sqlite3.IntegrityError:
                 msg = "Hata: Bu kullanıcı adı zaten mevcut!"
-        elif action == 'add_channel':
-            name = request.form['name']
-            url = request.form['url']
-            category = request.form['category']
-            conn.execute('INSERT INTO channels (name, url, category, logo) VALUES (?, ?, ?, ?)',
-                         (name, url, category, ''))
-            conn.commit()
-            msg = f"Kanal '{name}' eklendi."
-
+        
+        elif action == 'import_m3u':
+            m3u_text = request.form.get('m3u_content', '').strip()
+            m3u_url = request.form.get('m3u_url', '').strip()
+            
+            if m3u_url and not m3u_text:
+                adet, mesaj = fetch_and_import_m3u(m3u_url)
+                msg = mesaj
+            elif m3u_text:
+                channels = parse_m3u_content(m3u_text)
+                if channels:
+                    eklenen = 0
+                    for ch in channels:
+                        var = conn.execute('SELECT id FROM channels WHERE url = ?', (ch['url'],)).fetchone()
+                        if not var:
+                            conn.execute('''INSERT INTO channels (name, url, category, logo, stream_type) 
+                                            VALUES (?, ?, ?, ?, ?)''',
+                                        (ch['name'], ch['url'], ch['category'], ch['logo'], ch['stream_type']))
+                            eklenen += 1
+                    conn.commit()
+                    msg = f"{eklenen} kanal içe aktarıldı (toplam: {len(channels)})"
+                else:
+                    msg = "M3U içeriğinde kanal bulunamadı!"
+            else:
+                msg = "M3U linki veya içeriği girin!"
+    
     users = conn.execute('SELECT * FROM users').fetchall()
-    channels = conn.execute('SELECT * FROM channels').fetchall()
+    channels = conn.execute('SELECT * FROM channels ORDER BY category, name').fetchall()
     categories = conn.execute('SELECT DISTINCT category FROM channels').fetchall()
     conn.close()
+    
     return render_template_string(ADMIN_HTML, users=users, channels=channels, categories=categories, msg=msg)
 
 @app.route('/delete_user/<int:id>')
 def delete_user(id):
     if 'user' not in session or session['user'] != 'admin':
         return redirect(url_for('login'))
-    conn = get_db_connection()
+    conn = get_db()
     conn.execute('DELETE FROM users WHERE id = ? AND username != "admin"', (id,))
     conn.commit()
     conn.close()
@@ -949,7 +1001,7 @@ def delete_user(id):
 def delete_channel(id):
     if 'user' not in session or session['user'] != 'admin':
         return redirect(url_for('login'))
-    conn = get_db_connection()
+    conn = get_db()
     conn.execute('DELETE FROM channels WHERE id = ?', (id,))
     conn.commit()
     conn.close()
@@ -957,8 +1009,7 @@ def delete_channel(id):
 
 @app.route('/logout')
 def logout():
-    session.pop('user', None)
-    session.pop('expiry', None)
+    session.clear()
     return redirect(url_for('login'))
 
 if __name__ == '__main__':
