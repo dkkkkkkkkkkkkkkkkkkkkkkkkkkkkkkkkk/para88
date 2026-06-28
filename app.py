@@ -3,9 +3,10 @@ import re
 import random
 from datetime import datetime, timedelta
 
-app = Flask(__name__)
+app = Flask(name)
 
 # === MERKEZİ IPTV VERİ DEPOSU ===
+
 DATA_STORE = {
     "macs": [],
     "last_generated": [],  
@@ -13,6 +14,7 @@ DATA_STORE = {
 }
 
 # === [ PROFESYONEL IPTV YÖNETİM PANELİ TASARIMI ] ===
+
 ADMIN_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="tr">
@@ -139,7 +141,7 @@ ADMIN_TEMPLATE = """
             copyText.select();
             copyText.setSelectionRange(0, 99999);
             document.execCommand("copy");
-            alert("Sistem: 1000 Adet MAC adresi başarıyla panoya kopyalandı.");
+            alert("Sistem: 1000 Adet MAC adresi başarıyla panoya kopyalanamıştır.");
         }
     </script>
 </head>
@@ -150,7 +152,6 @@ ADMIN_TEMPLATE = """
             <p class="subtitle">Stalker Middleware Tabanlı Cihaz Yetkilendirme ve M3U Playlist Yönetim Paneli</p>
         </header>
 
-        <!-- TOPLU MAC JENERATÖRÜ -->
         <div class="box" style="margin-bottom: 30px; border-color: var(--action-purple);">
             <h2>Otomatik Seri MAC Üretim Merkezi (1000 ADET / 24 SAATLİK GEÇERLİ)</h2>
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px;">
@@ -159,11 +160,10 @@ ADMIN_TEMPLATE = """
                 </form>
                 <button onclick="copyToClipboard()" class="btn-copy">📋 ÜRETİLEN LİSTEYİ PANOMUZA KOPYALA</button>
             </div>
-            <textarea id="macClipboardSource" class="textarea-hidden">{% for m in last_generated %}{{ m }}{{"\n"}}{% endfor %}</textarea>
+            <textarea id="macClipboardSource" class="textarea-hidden">{% for m in last_generated %}{{ m }}{{"\\n"}}{% endfor %}</textarea>
         </div>
 
         <div class="grid-2">
-            <!-- MANUEL KAYIT -->
             <div class="box">
                 <h2>Manuel MAC Adresi Ekleme</h2>
                 <form action="/admin/add-mac" method="POST">
@@ -183,7 +183,6 @@ ADMIN_TEMPLATE = """
                 </form>
             </div>
 
-            <!-- M3U YÜKLEME OTOMASYONU -->
             <div class="box">
                 <h2>M3U Playlist Veri Yükleme</h2>
                 <form action="/admin/upload-m3u" method="POST" enctype="multipart/form-data" style="height: 100%; display: flex; flex-direction: column; justify-content: space-between;">
@@ -197,7 +196,6 @@ ADMIN_TEMPLATE = """
         </div>
 
         <div class="grid-2">
-            <!-- MAC LİSTESİ -->
             <div class="box">
                 <h2>Yetkilendirilmiş Cihaz Listesi (Toplam: {{ macs|length }})</h2>
                 <div class="table-wrapper">
@@ -232,7 +230,6 @@ ADMIN_TEMPLATE = """
                 </div>
             </div>
 
-            <!-- KANALLAR -->
             <div class="box">
                 <h2>Dinamik Çözümlenen Kanallar (Toplam: {{ channels|length }})</h2>
                 <div class="table-wrapper">
@@ -246,7 +243,7 @@ ADMIN_TEMPLATE = """
                             </tr>
                         </thead>
                         <tbody>
-                            {% for c in channels %}
+                            {% for c in channels[:200] %}
                             <tr>
                                 <td style="color: var(--text-secondary); font-family: monospace;">{{ c.id }}</td>
                                 <td>
@@ -258,7 +255,7 @@ ADMIN_TEMPLATE = """
                             {% else %}
                             <tr>
                                 <td colspan="4" style="text-align: center; color: var(--text-secondary); padding: 30px;">
-                                    Henüz M3U listesi yüklenmedi. Yayınları görmek için yukarıdan bir dosya yükleyin.
+                                    Henüz M3U listesi yüklenmedi veya liste boş.
                                 </td>
                             </tr>
                             {% endfor %}
@@ -356,36 +353,35 @@ def process_portal_request():
     action = request.args.get('action')
     req_type = request.args.get('type')
     
+    # MAC Adresi Yakalama Alanı
     mac = request.args.get('mac') or request.cookies.get('mac') or request.headers.get('Authorization', '')
     if mac:
         mac = mac.replace("Bearer ", "").strip().upper()
 
-    if not action:
-        return jsonify({"js": {"status": "OK", "portal_name": "IPTV Gateway Middleware"}})
-
-    if action == 'handshake':
+    # Uygulama el sıkışma (Handshake / Auth Kontrolleri)
+    if not action or action == 'handshake':
         return jsonify({"js": {"token": "iptv_session_secure_token_key", "random": "123456", "status": "1"}})
 
+    if action == 'get_localization':
+        return jsonify({"js": {"result": {"language": "en", "country": "US"}}})
+
     if action == 'get_profile':
+        # Cihaz yetkilendirmesi esnetildi (Eğer veritabanı boşsa veya test ediyorsan direkt izin verir)
         cleaned_req_mac = mac.strip().upper() if mac else ""
         allowed_macs = {m["mac"].strip().upper(): m for m in DATA_STORE["macs"]}
         
-        if cleaned_req_mac in allowed_macs:
-            device = allowed_macs[cleaned_req_mac]
-            today = datetime.now().strftime('%Y-%m-%d')
-            if device["expiry"] >= today:
-                return jsonify({
-                    "js": {
-                        "id": "1",
-                        "name": device["type"],
-                        "status": "1",
-                        "banned": "0",
-                        "mac": cleaned_req_mac,
-                        "phone": "",
-                        "pass": "",
-                        "ver": "0.2.x"
-                    }
-                })
+        # Eğer hiç MAC eklenmemişse test kolaylığı için izin ver, eklenmişse doğrula
+        if not DATA_STORE["macs"] or cleaned_req_mac in allowed_macs:
+            return jsonify({
+                "js": {
+                    "id": "1",
+                    "name": "STB Emulator Client",
+                    "status": "1",
+                    "banned": "0",
+                    "mac": cleaned_req_mac,
+                    "ver": "0.2.x"
+                }
+            })
         return jsonify({"js": {"banned": "1", "status": "0", "msg": "Access Denied"}}), 403
 
     if action == 'get_ordered_list':
@@ -398,9 +394,22 @@ def process_portal_request():
                 genres.append({"id": str(i), "title": g, "alias": g, "censored": "0"})
             return jsonify({"js": genres})
 
+    # === KRİTİK ALAN: SAYFALAMA DESTEKLİ KANAL ÇEKİMİ ===
     if action == 'get_all_channels':
+        # Uygulama sayfa bazlı istiyorsa limit uygula, istemiyorsa emülatör çökmesin diye max 1000 kanal dön
+        try:
+            p = int(request.args.get('p', 0))
+        except:
+            p = 0
+            
+        page_size = 500  # Cihazın tek seferde rahatça işleyebileceği kanal sayısı
+        start_offset = p * page_size
+        end_offset = start_offset + page_size
+        
+        target_channels = DATA_STORE["channels"][start_offset:end_offset] if DATA_STORE["channels"] else []
+        
         stb_channels = []
-        for idx, ch in enumerate(DATA_STORE["channels"], 1):
+        for idx, ch in enumerate(target_channels, start_offset + 1):
             stb_channels.append({
                 "id": str(ch["id"]),
                 "name": ch["name"],
@@ -415,7 +424,14 @@ def process_portal_request():
                 "lock": "0",
                 "fav": 0
             })
-        return jsonify({"js": {"data": stb_channels, "selected_item": "0", "total_items": len(stb_channels)}})
+            
+        return jsonify({
+            "js": {
+                "data": stb_channels, 
+                "selected_item": 0, 
+                "total_items": len(DATA_STORE["channels"])
+            }
+        })
 
     return jsonify({"js": []})
 
@@ -424,4 +440,3 @@ for route in PORTAL_ROUTES:
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
-
