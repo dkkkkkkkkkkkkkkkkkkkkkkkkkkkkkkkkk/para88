@@ -10,7 +10,7 @@ DATA_STORE = {
     "macs": [
         {"id": "ATT-01", "mac": "00:1A:79:A1:2B:3C", "type": "MAG / STB Emulator", "expiry": "2027-06-28"}
     ],
-    "last_generated": [],  # Sadece son üretilen 10 MAC'i kopyalamak için burada tutuyoruz
+    "last_generated": [],  # Son üretilen 100 MAC'i kopyalamak için hafıza odası
     "channels": [
         {"id": "1", "name": "AZTV", "cmd": "ffmpeg http://flussonic.izone.az:80/aztv/mono.m3u8", "genre": "Azərbaycan", "logo": "https://i.postimg.cc/sg126ZT1/a.png"},
         {"id": "2", "name": "İCTİMAİ TV", "cmd": "ffmpeg http://flussonic.izone.az:80/ictimaitv/mono.m3u8", "genre": "Azərbaycan", "logo": "https://i.postimg.cc/3wvx7Q5T/ITV-Azerbaijan-Logo.png"},
@@ -63,7 +63,7 @@ ADMIN_TEMPLATE = """
             copyText.select();
             copyText.setSelectionRange(0, 99999);
             document.execCommand("copy");
-            alert("Son üretilen 10 MAC adresi başarıyla kopyalandı! Alt alta yapıştırabilirsin.");
+            alert("Son üretilen 100 MAC adresi başarıyla panoya kopyalandı! İstediğin yere yapıştırabilirsin.");
         }
     </script>
 </head>
@@ -76,16 +76,15 @@ ADMIN_TEMPLATE = """
         <h1>[ ATT // STALKER CORE PORTAL GATEWAY ]</h1>
     </header>
 
-    <!-- OTOMATİK MAC ÜRETİCİ VE KOPYALAYICI İSTASYONU -->
+    <!-- OTOMATİK 100'LÜ MAC ÜRETİCİ VE KOPYALAYICI -->
     <div class="box" style="border-color: #a855f7;">
-        <h2>[⚡] Otomatik MAC Adresi Üretim & Kopyalama İstasyonu</h2>
+        <h2>[⚡] Otomatik MAC Adresi Üretim & Kopyalama İstasyonu (100 ADET / 1 GÜNLÜK)</h2>
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-            <form action="/admin/generate-10-macs" method="POST" style="margin: 0;">
-                <button type="submit" class="btn-generator">⚡ 10 ADET RASTGELE MAC ÜRET (3 GÜNLÜK)</button>
+            <form action="/admin/generate-100-macs" method="POST" style="margin: 0;">
+                <button type="submit" class="btn-generator">⚡ 100 ADET RASTGELE MAC ÜRET (1 GÜNLÜK)</button>
             </form>
-            <button onclick="copyToClipboard()" class="btn-copy">📋 SON ÜRETİLEN 10 ADETİ KOPYALA</button>
+            <button onclick="copyToClipboard()" class="btn-copy">📋 SON ÜRETİLEN 100 ADETİ KOPYALA</button>
         </div>
-        <!-- Kopyalama işlemi için arka planda verileri alt alta biriktiren gizli alan -->
         <textarea id="macClipboardSource" class="textarea-hidden">{% for m in last_generated %}{{ m }}{{"\n"}}{% endfor %}</textarea>
     </div>
 
@@ -118,34 +117,36 @@ ADMIN_TEMPLATE = """
     <!-- MAC ADRESLERİ TABLOSU -->
     <div class="box" style="margin-bottom: 25px;">
         <h2>[=] Yetkilendirilmiş MAC Listesi (Toplam: {{ macs|length }})</h2>
-        <table>
-            <thead>
-                <tr>
-                    <th>SIRA ID</th>
-                    <th>MAC ADRESİ</th>
-                    <th>CİHAZ TIPI</th>
-                    <th>EXPIRE DATE (BİTİŞ)</th>
-                    <th>DURUM</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for m in macs %}
-                <tr>
-                    <td>{{ m.id }}</td>
-                    <td style="color:#ff3b30; font-weight:bold; font-size:0.95rem;">{{ m.mac.upper() }}</td>
-                    <td>{{ m.type }}</td>
-                    <td style="color:#38bdf8;">{{ m.expiry }}</td>
-                    <td>
-                        {% if "AUTO" in m.id %}
-                        <span class="badge-temp">3 DAYS AUTO</span>
-                        {% else %}
-                        <span class="badge">ACTIVE</span>
-                        {% endif %}
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+        <div style="max-height: 400px; overflow-y: auto;">
+            <table>
+                <thead>
+                    <tr>
+                        <th>SIRA ID</th>
+                        <th>MAC ADRESİ</th>
+                        <th>CİHAZ TIPI</th>
+                        <th>EXPIRE DATE (BİTİŞ)</th>
+                        <th>DURUM</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for m in macs %}
+                    <tr>
+                        <td>{{ m.id }}</td>
+                        <td style="color:#ff3b30; font-weight:bold; font-size:0.95rem;">{{ m.mac.upper() }}</td>
+                        <td>{{ m.type }}</td>
+                        <td style="color:#38bdf8;">{{ m.expiry }}</td>
+                        <td>
+                            {% if "AUTO" in m.id %}
+                            <span class="badge-temp">1 DAY AUTO</span>
+                            {% else %}
+                            <span class="badge">ACTIVE</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
     </div>
 
     <!-- KANALLAR TABLOSU -->
@@ -186,27 +187,29 @@ ADMIN_TEMPLATE = """
 def admin_dashboard():
     return render_template_string(ADMIN_TEMPLATE, macs=DATA_STORE["macs"], channels=DATA_STORE["channels"], last_generated=DATA_STORE["last_generated"])
 
-# === ⚡ 10 ADET 3 GÜNLÜK MAC ÜRETEN VE HAFIZAYA ALAN ROUTE ⚡ ===
-@app.route('/admin/generate-10-macs', methods=['POST'])
-def generate_10_macs():
-    three_days_later = (datetime.now() + timedelta(days=3)).strftime('%Y-%m-%d')
+# === ⚡ 100 ADET 1 GÜNLÜK MAC ÜRETEN MUKEMMEL ROUTE ⚡ ===
+@app.route('/admin/generate-100-macs', methods=['POST'])
+def generate_100_macs():
+    # Tam 1 gün (24 saat) sonrasını hesapla kanka
+    one_day_later = (datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d')
     
-    # Her yeni üretimde eski kopyalama hafızasını temizliyoruz
+    # Kopyalama odasını her basışta tazele
     DATA_STORE["last_generated"] = []
     
-    for _ in range(10):
+    for _ in range(100):
+        # Stalker standart başlangıcı 00:1A:79 + 3 çift rastgele hex grubu
         rand_mac = f"00:1A:79:{random.randint(0x10, 0xEF):02X}:{random.randint(0x10, 0xEF):02X}:{random.randint(0x10, 0xEF):02X}".upper()
-        auto_id = f"AUTO-{len(DATA_STORE['macs']) + 1:03d}"
+        auto_id = f"AUTO-{len(DATA_STORE['macs']) + 1:04d}"
         
-        # Sunucu listesine ekle (Aktif kayıt)
+        # Sunucu hafızasına enjekte et
         DATA_STORE["macs"].append({
             "id": auto_id,
             "mac": rand_mac,
-            "type": "Auto Generated Device",
-            "expiry": three_days_later
+            "type": "1-Day Auto Generated Device",
+            "expiry": one_day_later
         })
         
-        # Kopyalama butonuna basıldığında çekilmesi için listeye at
+        # Tek seferde toplu kopyalanabilmesi için o odaya da gönder
         DATA_STORE["last_generated"].append(rand_mac)
         
     return redirect(url_for('admin_dashboard'))
