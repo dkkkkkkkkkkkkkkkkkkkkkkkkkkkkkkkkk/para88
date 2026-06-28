@@ -8,8 +8,8 @@ app = Flask(__name__)
 # === MERKEZİ IPTV VERİ DEPOSU ===
 DATA_STORE = {
     "macs": [],
-    "last_generated": [],  # Son üretilen 1000 adet MAC adresi hafızası
-    "channels": []         # Başlangıçta boş, M3U yüklendikçe dinamik dolar
+    "last_generated": [],  
+    "channels": []         
 }
 
 # === [ PROFESYONEL IPTV YÖNETİM PANELİ TASARIMI ] ===
@@ -255,7 +255,7 @@ ADMIN_TEMPLATE = """
                                 <td style="font-weight: 600; color: #fff;">{{ c.name }}</td>
                                 <td style="color: var(--text-secondary);"><span style="color: var(--brand-blue); font-weight:600;">[</span> {{ c.genre }} <span style="color: var(--brand-blue); font-weight:600;">]</span></td>
                             </tr>
-                            {% empty %}
+                            {% else %}
                             <tr>
                                 <td colspan="4" style="text-align: center; color: var(--text-secondary); padding: 30px;">
                                     Henüz M3U listesi yüklenmedi. Yayınları görmek için yukarıdan bir dosya yükleyin.
