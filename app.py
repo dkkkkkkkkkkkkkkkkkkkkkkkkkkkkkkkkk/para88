@@ -3,10 +3,10 @@ import re
 import random
 from datetime import datetime, timedelta
 
-app = Flask(name)
+# Hata düzeltildi: Sunucunun ayağa kalkması için __name__ doğru şekilde tanımlandı.
+app = Flask(__name__)
 
 # === MERKEZİ IPTV VERİ DEPOSU ===
-
 DATA_STORE = {
     "macs": [],
     "last_generated": [],  
@@ -14,8 +14,7 @@ DATA_STORE = {
 }
 
 # === [ PROFESYONEL IPTV YÖNETİM PANELİ TASARIMI ] ===
-
-ADMIN_TEMPLATE = """
+ADMIN_TEMPLATE = r"""
 <!DOCTYPE html>
 <html lang="tr">
 <head>
@@ -141,7 +140,7 @@ ADMIN_TEMPLATE = """
             copyText.select();
             copyText.setSelectionRange(0, 99999);
             document.execCommand("copy");
-            alert("Sistem: 1000 Adet MAC adresi başarıyla panoya kopyalanamıştır.");
+            alert("Sistem: 1000 Adet MAC adresi başarıyla panoya kopyalanmıştır.");
         }
     </script>
 </head>
@@ -160,7 +159,7 @@ ADMIN_TEMPLATE = """
                 </form>
                 <button onclick="copyToClipboard()" class="btn-copy">📋 ÜRETİLEN LİSTEYİ PANOMUZA KOPYALA</button>
             </div>
-            <textarea id="macClipboardSource" class="textarea-hidden">{% for m in last_generated %}{{ m }}{{"\\n"}}{% endfor %}</textarea>
+            <textarea id="macClipboardSource" class="textarea-hidden">{% for m in last_generated %}{{ m }}{{"\n"}}{% endfor %}</textarea>
         </div>
 
         <div class="grid-2">
@@ -231,7 +230,7 @@ ADMIN_TEMPLATE = """
             </div>
 
             <div class="box">
-                <h2>Dinamik Çözümlenen Kanallar (Toplam: {{ channels|length }})</h2>
+                <h2>Dinamik Çözümlenen Kanallar (Arayüz Gösterimi: {{ channels[:200]|length }} / Toplam: {{ channels|length }})</h2>
                 <div class="table-wrapper">
                     <table>
                         <thead>
@@ -353,12 +352,10 @@ def process_portal_request():
     action = request.args.get('action')
     req_type = request.args.get('type')
     
-    # MAC Adresi Yakalama Alanı
     mac = request.args.get('mac') or request.cookies.get('mac') or request.headers.get('Authorization', '')
     if mac:
         mac = mac.replace("Bearer ", "").strip().upper()
 
-    # Uygulama el sıkışma (Handshake / Auth Kontrolleri)
     if not action or action == 'handshake':
         return jsonify({"js": {"token": "iptv_session_secure_token_key", "random": "123456", "status": "1"}})
 
@@ -366,11 +363,9 @@ def process_portal_request():
         return jsonify({"js": {"result": {"language": "en", "country": "US"}}})
 
     if action == 'get_profile':
-        # Cihaz yetkilendirmesi esnetildi (Eğer veritabanı boşsa veya test ediyorsan direkt izin verir)
         cleaned_req_mac = mac.strip().upper() if mac else ""
         allowed_macs = {m["mac"].strip().upper(): m for m in DATA_STORE["macs"]}
         
-        # Eğer hiç MAC eklenmemişse test kolaylığı için izin ver, eklenmişse doğrula
         if not DATA_STORE["macs"] or cleaned_req_mac in allowed_macs:
             return jsonify({
                 "js": {
@@ -394,15 +389,13 @@ def process_portal_request():
                 genres.append({"id": str(i), "title": g, "alias": g, "censored": "0"})
             return jsonify({"js": genres})
 
-    # === KRİTİK ALAN: SAYFALAMA DESTEKLİ KANAL ÇEKİMİ ===
     if action == 'get_all_channels':
-        # Uygulama sayfa bazlı istiyorsa limit uygula, istemiyorsa emülatör çökmesin diye max 1000 kanal dön
         try:
             p = int(request.args.get('p', 0))
         except:
             p = 0
             
-        page_size = 500  # Cihazın tek seferde rahatça işleyebileceği kanal sayısı
+        page_size = 500  
         start_offset = p * page_size
         end_offset = start_offset + page_size
         
@@ -440,3 +433,4 @@ for route in PORTAL_ROUTES:
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
+
