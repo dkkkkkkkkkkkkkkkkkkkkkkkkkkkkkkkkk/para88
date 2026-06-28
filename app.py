@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify, make_response, render_template_string, redirect, url_for
 import re
-from datetime import datetime
+import random
+from datetime import datetime, timedelta
 
 app = Flask(__name__)
 
@@ -9,6 +10,7 @@ DATA_STORE = {
     "macs": [
         {"id": "ATT-01", "mac": "00:1A:79:A1:2B:3C", "type": "MAG / STB Emulator", "expiry": "2027-06-28"}
     ],
+    "last_generated": [],  # Sadece son üretilen 10 MAC'i kopyalamak için burada tutuyoruz
     "channels": [
         {"id": "1", "name": "AZTV", "cmd": "ffmpeg http://flussonic.izone.az:80/aztv/mono.m3u8", "genre": "Azərbaycan", "logo": "https://i.postimg.cc/sg126ZT1/a.png"},
         {"id": "2", "name": "İCTİMAİ TV", "cmd": "ffmpeg http://flussonic.izone.az:80/ictimaitv/mono.m3u8", "genre": "Azərbaycan", "logo": "https://i.postimg.cc/3wvx7Q5T/ITV-Azerbaijan-Logo.png"},
@@ -39,12 +41,31 @@ ADMIN_TEMPLATE = """
         button:hover { background: rgba(255,59,48,0.1); box-shadow: 0 0 10px rgba(255,59,48,0.2); }
         .btn-m3u { border-color: #38bdf8; color: #38bdf8; }
         .btn-m3u:hover { background: rgba(56,189,248,0.1); box-shadow: 0 0 10px rgba(56,189,248,0.2); }
+        .btn-generator { border-color: #a855f7; color: #a855f7; font-size: 1rem; }
+        .btn-generator:hover { background: rgba(168,85,247,0.1); box-shadow: 0 0 10px rgba(168,85,247,0.2); }
+        .btn-copy { border-color: #10b981; color: #10b981; font-size: 1rem; }
+        .btn-copy:hover { background: rgba(16,185,129,0.1); box-shadow: 0 0 10px rgba(16,185,129,0.2); }
         table { width: 100%; border-collapse: collapse; margin-top: 10px; }
         th, td { padding: 12px; text-align: left; border-bottom: 1px solid #1f2937; font-size: 0.85rem; }
         th { background: #111827; color: #38bdf8; }
         .badge { padding: 3px 8px; border-radius: 4px; font-weight: bold; font-size: 0.75rem; background: rgba(56,189,248,0.15); color: #38bdf8; }
+        .badge-temp { padding: 3px 8px; border-radius: 4px; font-weight: bold; font-size: 0.75rem; background: rgba(168,85,247,0.15); color: #a855f7; }
         .channel-logo { width: 35px; height: 35px; object-fit: contain; vertical-align: middle; background: #000; border-radius: 4px; border: 1px solid #1f2937; }
+        .textarea-hidden { position: absolute; left: -9999px; }
     </style>
+    <script>
+        function copyToClipboard() {
+            var copyText = document.getElementById("macClipboardSource");
+            if (copyText.value.trim() === "") {
+                alert("Henüz yeni MAC üretilmedi veya kopyalanacak veri yok!");
+                return;
+            }
+            copyText.select();
+            copyText.setSelectionRange(0, 99999);
+            document.execCommand("copy");
+            alert("Son üretilen 10 MAC adresi başarıyla kopyalandı! Alt alta yapıştırabilirsin.");
+        }
+    </script>
 </head>
 <body>
     <header>
@@ -55,10 +76,23 @@ ADMIN_TEMPLATE = """
         <h1>[ ATT // STALKER CORE PORTAL GATEWAY ]</h1>
     </header>
 
+    <!-- OTOMATİK MAC ÜRETİCİ VE KOPYALAYICI İSTASYONU -->
+    <div class="box" style="border-color: #a855f7;">
+        <h2>[⚡] Otomatik MAC Adresi Üretim & Kopyalama İstasyonu</h2>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+            <form action="/admin/generate-10-macs" method="POST" style="margin: 0;">
+                <button type="submit" class="btn-generator">⚡ 10 ADET RASTGELE MAC ÜRET (3 GÜNLÜK)</button>
+            </form>
+            <button onclick="copyToClipboard()" class="btn-copy">📋 SON ÜRETİLEN 10 ADETİ KOPYALA</button>
+        </div>
+        <!-- Kopyalama işlemi için arka planda verileri alt alta biriktiren gizli alan -->
+        <textarea id="macClipboardSource" class="textarea-hidden">{% for m in last_generated %}{{ m }}{{"\n"}}{% endfor %}</textarea>
+    </div>
+
     <div class="grid">
         <!-- MAC ENJEKSİYON ALANI -->
         <div class="box">
-            <h2>[+] MAC Adresi Yetkilendir</h2>
+            <h2>[+] Manuel MAC Adresi Yetkilendir</h2>
             <form action="/admin/add-mac" method="POST">
                 <input type="text" name="mac" placeholder="00:1A:79:XX:XX:XX" required>
                 <input type="text" name="type" placeholder="Cihaz Tipi / Profil Adı" required>
@@ -68,9 +102,9 @@ ADMIN_TEMPLATE = """
             </form>
         </div>
 
-        <!-- OTMOMATİK M3U YÜKLEME ALANI -->
+        <!-- OTOMATİK M3U YÜKLEME ALANI -->
         <div class="box">
-            <h2>[↑] M3U Playlist Otomasyonu</h2>
+            <h2>[↑] M3U Playlist Otomasyonu (Kanalları Ayıklar)</h2>
             <form action="/admin/upload-m3u" method="POST" enctype="multipart/form-data">
                 <label style="font-size:0.8rem; color:#9ca3af; display:block; margin-bottom:10px;">
                     Listenizi (.m3u veya .txt) seçin, sistem otomatik olarak çözüp portala basacaktır:
@@ -101,7 +135,13 @@ ADMIN_TEMPLATE = """
                     <td style="color:#ff3b30; font-weight:bold; font-size:0.95rem;">{{ m.mac.upper() }}</td>
                     <td>{{ m.type }}</td>
                     <td style="color:#38bdf8;">{{ m.expiry }}</td>
-                    <td><span class="badge">ACTIVE</span></td>
+                    <td>
+                        {% if "AUTO" in m.id %}
+                        <span class="badge-temp">3 DAYS AUTO</span>
+                        {% else %}
+                        <span class="badge">ACTIVE</span>
+                        {% endif %}
+                    </td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -144,11 +184,36 @@ ADMIN_TEMPLATE = """
 
 @app.route('/admin')
 def admin_dashboard():
-    return render_template_string(ADMIN_TEMPLATE, macs=DATA_STORE["macs"], channels=DATA_STORE["channels"])
+    return render_template_string(ADMIN_TEMPLATE, macs=DATA_STORE["macs"], channels=DATA_STORE["channels"], last_generated=DATA_STORE["last_generated"])
+
+# === ⚡ 10 ADET 3 GÜNLÜK MAC ÜRETEN VE HAFIZAYA ALAN ROUTE ⚡ ===
+@app.route('/admin/generate-10-macs', methods=['POST'])
+def generate_10_macs():
+    three_days_later = (datetime.now() + timedelta(days=3)).strftime('%Y-%m-%d')
+    
+    # Her yeni üretimde eski kopyalama hafızasını temizliyoruz
+    DATA_STORE["last_generated"] = []
+    
+    for _ in range(10):
+        rand_mac = f"00:1A:79:{random.randint(0x10, 0xEF):02X}:{random.randint(0x10, 0xEF):02X}:{random.randint(0x10, 0xEF):02X}".upper()
+        auto_id = f"AUTO-{len(DATA_STORE['macs']) + 1:03d}"
+        
+        # Sunucu listesine ekle (Aktif kayıt)
+        DATA_STORE["macs"].append({
+            "id": auto_id,
+            "mac": rand_mac,
+            "type": "Auto Generated Device",
+            "expiry": three_days_later
+        })
+        
+        # Kopyalama butonuna basıldığında çekilmesi için listeye at
+        DATA_STORE["last_generated"].append(rand_mac)
+        
+    return redirect(url_for('admin_dashboard'))
 
 @app.route('/admin/add-mac', methods=['POST'])
 def add_mac():
-    mac = request.form.get('mac').strip()
+    mac = request.form.get('mac').strip().upper()
     device_type = request.form.get('type').strip()
     expiry = request.form.get('expiry')
     
@@ -197,7 +262,7 @@ def upload_m3u():
     return redirect(url_for('admin_dashboard'))
 
 
-# === 🕵️‍♂️ ULTRA UYUMLU, SIFIR HATA STALKER API KATI ===
+# === 🕵️‍♂️ ULTRA UYUMLU STALKER API KATI ===
 
 @app.route('/c/', methods=['GET', 'POST'])
 @app.route('/c/portal.php', methods=['GET', 'POST'])
@@ -206,15 +271,12 @@ def stalker_portal():
     req_type = request.args.get('type')
     mac = request.args.get('mac') or request.cookies.get('mac') or request.headers.get('Authorization','')
     
-    # Adres satırında mac yoksa temizle/ayıkla
     if mac:
-        mac = mac.replace("Bearer ", "").strip()
+        mac = mac.replace("Bearer ", "").strip().upper()
 
-    # HATA ÖNLEYİCİ 1: İstek boşsa veya action yoksa ana el sıkışmayı dön
     if not action:
         return jsonify({"js": {"status": "OK", "portal_name": "ANADOLU TURKEY TAYFASI"}})
 
-    # --- HANDSHAKE ---
     if action == 'handshake':
         return jsonify({
             "js": {
@@ -224,7 +286,6 @@ def stalker_portal():
             }
         })
 
-    # --- GET PROFILE & AUTH ---
     if action == 'get_profile':
         allowed_macs = {m["mac"].upper(): m for m in DATA_STORE["macs"]}
         if mac and mac.upper() in allowed_macs:
@@ -240,31 +301,21 @@ def stalker_portal():
                         "mac": mac,
                         "phone": "",
                         "pass": "",
-                        "ver": "ImageDescription: 0.2.x"
+                        "ver": "0.2.x"
                     }
                 })
-        # Eğer MAC listede yoksa ya da süresi bittiyse kesin hata kodu fırlat
         return jsonify({"js": {"banned": "1", "status": "0", "msg": "Cihaz Yetkisiz veya Suresi Dolmus"}}), 403
 
-    # --- GET ORDERED LIST (KATEGORİLER) ---
     if action == 'get_ordered_list':
         if req_type == 'vod':
-            # Movies/Sinema sekmesi için boş kalmasın hatası engelleme
             return jsonify({"js": [{"id": "vod_att", "title": "ATT Sinema Arşivi", "alias": "movies"}]})
         else:
-            # Canlı TV Kategorileri
             genres_set = list(set([ch["genre"] for ch in DATA_STORE["channels"]]))
             genres = []
             for i, g in enumerate(genres_set, 1):
-                genres.append({
-                    "id": str(i),
-                    "title": g,
-                    "alias": g,
-                    "censored": "0"
-                })
+                genres.append({"id": str(i), "title": g, "alias": g, "censored": "0"})
             return jsonify({"js": genres})
 
-    # --- GET ALL CHANNELS (HATA VERMEYEN ANA YAYIN VERİ YAPISI) ---
     if action == 'get_all_channels':
         stb_channels = []
         for idx, ch in enumerate(DATA_STORE["channels"], 1):
@@ -283,8 +334,6 @@ def stalker_portal():
                 "fav": 0
             })
         
-        # Stalker mobil uygulamaların aradığı çift katmanlı veri koruması:
-        # Hem 'data' içinde hem de saf nesne olarak sarmallıyoruz.
         return jsonify({
             "js": {
                 "data": stb_channels,
@@ -293,7 +342,6 @@ def stalker_portal():
             }
         })
 
-    # VOD/Movies kategorisi için ek güvenlik kontrolü
     if action == 'get_vod_genres':
         return jsonify({"js": [{"id": "vod_att", "title": "ATT Sinema Arşivi"}]})
 
