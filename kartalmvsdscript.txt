@@ -1,6 +1,6 @@
 -- ============================================================
--- DELTA PRO MVSD ULTIMATE v3 | KARTAL BEY
--- Tüm Hakları Saklıdır © 2026
+-- DELTA PRO MVSD ULTIMATE v4 | KARTAL BEY
+-- OrionLib Tabanlı | Delta Executor Uyumlu
 -- Murderers VS Sheriffs Duels | %100 Anti-Ban
 -- ============================================================
 
@@ -14,17 +14,14 @@ if game.PlaceId ~= 12355337193 then
     return
 end
 
--- Kütüphane
-local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/wally-rblx/uwuware-ui/main/main.lua"))()
-local Window = Library:CreateWindow("✦ Delta Pro MVSD | KARTAL BEY ✦")
+-- OrionLib Yükle (Delta'da çalışır)
+local OrionLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/shlexware/Orion/main/source"))()
 
 -- Servisler
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local VirtualUser = game:GetService("VirtualUser")
-local TweenService = game:GetService("TweenService")
-local HttpService = game:GetService("HttpService")
 local LocalPlayer = Players.LocalPlayer
 local Mouse = LocalPlayer:GetMouse()
 local Camera = workspace.CurrentCamera
@@ -35,66 +32,40 @@ local Remotes = ReplicatedStorage:WaitForChild("Remotes")
 local ShootRemote = Remotes:WaitForChild("Shoot")
 local StabRemote = Remotes:WaitForChild("Stab")
 
--- Body Parts (R15)
-local BODY = {
-    "Head","Torso","LeftUpperArm","LeftLowerArm","LeftHand",
-    "RightUpperArm","RightLowerArm","RightHand",
-    "LeftUpperLeg","LeftLowerLeg","LeftFoot",
-    "RightUpperLeg","RightLowerLeg","RightFoot"
-}
+-- Body Parts
+local BODY = {"Head","Torso","LeftUpperArm","LeftLowerArm","LeftHand","RightUpperArm","RightLowerArm","RightHand","LeftUpperLeg","LeftLowerLeg","LeftFoot","RightUpperLeg","RightLowerLeg","RightFoot"}
 
--- ===================== ANTI-BAN ÇEKİRDEK =====================
-local AntiBan = {
-    RandomDelay = function(self, min, max)
-        task.wait(min + math.random() * (max - min))
-    end,
-    SpoofPing = function(self)
-        pcall(function()
-            sethiddenproperty(LocalPlayer, "SimulationRadius", math.random(50, 200))
-            sethiddenproperty(LocalPlayer, "CharacterAutomaticScalingEnabled", false)
-        end)
-    end,
-    AntiAFK = function(self)
-        VirtualUser:CaptureController()
-        VirtualUser:ClickButton2(Vector2.new())
-    end,
-    RandomVector = function(self)
-        return Vector3.new(math.random()*2-1, math.random()*2-1, math.random()*2-1)
-    end,
-    RandomBodyPart = function(self, char)
-        return char:FindFirstChild(BODY[math.random(#BODY)]) or char:FindFirstChild("HumanoidRootPart")
-    end
-}
-
--- Anti-AFK Döngüsü
+-- ===================== ANTI-BAN =====================
 coroutine.wrap(function()
     while true do
         task.wait(120 + math.random() * 60)
-        AntiBan:AntiAFK()
+        pcall(function()
+            VirtualUser:CaptureController()
+            VirtualUser:ClickButton2(Vector2.new())
+        end)
     end
 end)()
 
--- Ping Spoof Döngüsü
 coroutine.wrap(function()
     while true do
         task.wait(2 + math.random() * 4)
-        AntiBan:SpoofPing()
+        pcall(function()
+            sethiddenproperty(LocalPlayer, "SimulationRadius", math.random(50, 200))
+        end)
     end
 end)()
 
--- Rastgele Hareket Simülasyonu (bot gibi görünme)
-coroutine.wrap(function()
-    while true do
-        task.wait(30 + math.random() * 40)
-        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
-            LocalPlayer.Character.Humanoid:MoveTo(
-                LocalPlayer.Character.HumanoidRootPart.Position + Vector3.new(math.random(-5,5), 0, math.random(-5,5))
-            )
-        end
-    end
-end)()
+local function randDelay(min, max)
+    task.wait(min + math.random() * (max - min))
+end
 
--- ===================== YARDIMCI FONKSİYONLAR =====================
+local function randVec()
+    return Vector3.new(math.random()*2-1, math.random()*2-1, math.random()*2-1)
+end
+
+local function randBody(char)
+    return char:FindFirstChild(BODY[math.random(#BODY)]) or char:FindFirstChild("HumanoidRootPart")
+end
 
 local function isEnemy(model)
     if not model then return false end
@@ -107,7 +78,7 @@ local function isAlive(char)
     return char and char:FindFirstChild("Humanoid") and char.Humanoid.Health > 0
 end
 
-local function getClosestEnemy()
+local function getClosest()
     local closest, closestDist = nil, math.huge
     for _, v in pairs(Players:GetPlayers()) do
         if v ~= LocalPlayer and isAlive(v.Character) and isEnemy(v.Character) then
@@ -116,10 +87,7 @@ local function getClosestEnemy()
                 local pos, onScreen = Camera:WorldToViewportPoint(hrp.Position)
                 if onScreen then
                     local dist = (Vector2.new(Mouse.X, Mouse.Y) - Vector2.new(pos.X, pos.Y)).Magnitude
-                    if dist < closestDist then
-                        closest = v
-                        closestDist = dist
-                    end
+                    if dist < closestDist then closest = v; closestDist = dist end
                 end
             end
         end
@@ -127,14 +95,13 @@ local function getClosestEnemy()
     return closest
 end
 
-local function getAllEnemies()
+local function getAll()
     local list = {}
     for _, v in pairs(Players:GetPlayers()) do
         if v ~= LocalPlayer and isAlive(v.Character) and isEnemy(v.Character) then
             table.insert(list, v)
         end
     end
-    -- Karıştır
     for i = #list, 1, -1 do
         local j = math.random(1, i)
         list[i], list[j] = list[j], list[i]
@@ -144,9 +111,9 @@ end
 
 local function Shoot(char)
     if not ShootRemote or not char then return false end
-    local part = AntiBan:RandomBodyPart(char)
+    local part = randBody(char)
     if not part then return false end
-    ShootRemote:FireServer(AntiBan:RandomVector(), AntiBan:RandomVector(), part, AntiBan:RandomVector())
+    ShootRemote:FireServer(randVec(), randVec(), part, randVec())
     return true
 end
 
@@ -158,118 +125,96 @@ local function Stab(char)
     return true
 end
 
--- ===================== GÖRSEL TASARIM =====================
+-- ===================== GUI =====================
+local Window = OrionLib:MakeWindow({
+    Name = "DELTA PRO MVSD | KARTAL BEY",
+    HidePremium = false,
+    SaveConfig = false,
+    ConfigFolder = "DeltaProMVSD"
+})
 
--- Combat
-local Combat = Window:AddSection("⚔ COMBAT")
+-- === COMBAT ===
+local CombatTab = Window:MakeTab({Name = "Combat", Icon = "rbxassetid://4483345998", PremiumOnly = false})
 
--- Silent Aim
 _G.SilentAim = false
-Combat:AddToggle("✦ Silent Aim", function(state) _G.SilentAim = state end)
+CombatTab:AddToggle({Name = "Silent Aim", Default = false, Callback = function(v) _G.SilentAim = v end})
 
 Mouse.Button1Down:Connect(function()
     if _G.SilentAim then
-        local t = getClosestEnemy()
-        if t and t.Character then
-            Shoot(t.Character)
-            AntiBan:RandomDelay(0.03, 0.1)
-        end
+        local t = getClosest()
+        if t and t.Character then Shoot(t.Character); randDelay(0.03, 0.1) end
     end
 end)
 
--- Triggerbot
 _G.Triggerbot = false
-Combat:AddToggle("✦ Triggerbot", function(state)
-    _G.Triggerbot = state
-    if state then
+CombatTab:AddToggle({Name = "Triggerbot", Default = false, Callback = function(v)
+    _G.Triggerbot = v
+    if v then
         coroutine.wrap(function()
             while _G.Triggerbot do
-                local t = getClosestEnemy()
+                local t = getClosest()
                 if t and t.Character then
-                    local dist = (t.Character.HumanoidRootPart.Position - 
-                        LocalPlayer.Character.HumanoidRootPart.Position).Magnitude
-                    if dist < 70 then
-                        Shoot(t.Character)
-                        AntiBan:RandomDelay(0.15, 0.4)
-                    end
+                    local dist = (t.Character.HumanoidRootPart.Position - LocalPlayer.Character.HumanoidRootPart.Position).Magnitude
+                    if dist < 70 then Shoot(t.Character); randDelay(0.15, 0.4) end
                 end
                 RunService.RenderStepped:Wait()
             end
         end)()
     end
-end)
+end})
 
--- Auto Shoot
 _G.AutoShoot = false
-Combat:AddToggle("✦ Auto Shoot", function(state)
-    _G.AutoShoot = state
-    if state then
+CombatTab:AddToggle({Name = "Auto Shoot", Default = false, Callback = function(v)
+    _G.AutoShoot = v
+    if v then
         coroutine.wrap(function()
             while _G.AutoShoot do
-                local t = getClosestEnemy()
-                if t and t.Character then
-                    Shoot(t.Character)
-                    AntiBan:RandomDelay(0.08, 0.2)
-                end
+                local t = getClosest()
+                if t and t.Character then Shoot(t.Character); randDelay(0.08, 0.2) end
                 task.wait(0.05)
             end
         end)()
     end
-end)
+end})
 
--- Kill All (Ultra Stealth)
-Combat:AddButton("✦ Kill All [Stealth]", function()
-    local enemies = getAllEnemies()
+CombatTab:AddButton({Name = "Kill All [Stealth]", Callback = function()
+    local enemies = getAll()
     for _, v in ipairs(enemies) do
         if isAlive(v.Character) then
-            local hrp = v.Character:FindFirstChild("HumanoidRootPart")
-            if hrp then
-                -- Önce bıçak dene
-                if not Stab(v.Character) then
-                    Shoot(v.Character)
-                end
-                AntiBan:RandomDelay(2.0, 4.5)
-            end
+            if not Stab(v.Character) then Shoot(v.Character) end
+            randDelay(2.0, 4.5)
         end
     end
-end)
+end})
 
--- Auto Kill All (döngüsel)
 _G.AutoKillAll = false
-Combat:AddToggle("✦ Auto Kill All", function(state)
-    _G.AutoKillAll = state
-    if state then
+CombatTab:AddToggle({Name = "Auto Kill All", Default = false, Callback = function(v)
+    _G.AutoKillAll = v
+    if v then
         coroutine.wrap(function()
             while _G.AutoKillAll do
-                local enemies = getAllEnemies()
+                local enemies = getAll()
                 for _, v in ipairs(enemies) do
-                    if isAlive(v.Character) then
-                        Shoot(v.Character)
-                        AntiBan:RandomDelay(0.1, 0.4)
-                    end
+                    if isAlive(v.Character) then Shoot(v.Character); randDelay(0.1, 0.4) end
                 end
-                AntiBan:RandomDelay(3.0, 6.0)
+                randDelay(3.0, 6.0)
             end
         end)()
     end
-end)
+end})
 
--- Knife Aura
 _G.KnifeAura = false
-Combat:AddToggle("✦ Knife Aura", function(state)
-    _G.KnifeAura = state
-    if state then
+CombatTab:AddToggle({Name = "Knife Aura", Default = false, Callback = function(v)
+    _G.KnifeAura = v
+    if v then
         coroutine.wrap(function()
             while _G.KnifeAura do
                 for _, v in pairs(Players:GetPlayers()) do
                     if v ~= LocalPlayer and isAlive(v.Character) and isEnemy(v.Character) then
                         local hrp = v.Character:FindFirstChild("HumanoidRootPart")
-                        if hrp then
+                        if hrp and LocalPlayer.Character then
                             local dist = (hrp.Position - LocalPlayer.Character.HumanoidRootPart.Position).Magnitude
-                            if dist < 20 then
-                                Stab(v.Character)
-                                AntiBan:RandomDelay(0.2, 0.8)
-                            end
+                            if dist < 20 then Stab(v.Character); randDelay(0.2, 0.8) end
                         end
                     end
                 end
@@ -277,81 +222,60 @@ Combat:AddToggle("✦ Knife Aura", function(state)
             end
         end)()
     end
-end)
+end})
 
--- Silent Stab (uzaktan bıçak)
 _G.SilentStab = false
-Combat:AddToggle("✦ Silent Stab [Long Range]", function(state)
-    _G.SilentStab = state
-    if state then
+CombatTab:AddToggle({Name = "Silent Stab [Long Range]", Default = false, Callback = function(v)
+    _G.SilentStab = v
+    if v then
         coroutine.wrap(function()
             while _G.SilentStab do
                 for _, v in pairs(Players:GetPlayers()) do
                     if v ~= LocalPlayer and isAlive(v.Character) and isEnemy(v.Character) then
-                        Stab(v.Character)
-                        AntiBan:RandomDelay(0.5, 1.5)
+                        Stab(v.Character); randDelay(0.5, 1.5)
                     end
                 end
                 task.wait(0.2)
             end
         end)()
     end
-end)
+end})
 
--- ===================== HITBOX =====================
-local Hitbox = Window:AddSection("🎯 HITBOX")
+-- === HITBOX ===
+local HitboxTab = Window:MakeTab({Name = "Hitbox", Icon = "rbxassetid://4483345998", PremiumOnly = false})
 
-_G.HitboxEnabled = false
+_G.Hitbox = false
 _G.HitboxSize = 7
-_G.HitboxTransparency = 0.6
 
-local function HitboxLoop()
-    while _G.HitboxEnabled do
+HitboxTab:AddToggle({Name = "Hitbox Expander", Default = false, Callback = function(v)
+    _G.Hitbox = v
+    coroutine.wrap(function()
+        while _G.Hitbox do
+            for _, v in pairs(Players:GetPlayers()) do
+                if v ~= LocalPlayer and v.Character then
+                    local hrp = v.Character:FindFirstChild("HumanoidRootPart")
+                    if hrp then hrp.Size = Vector3.new(_G.HitboxSize, _G.HitboxSize, _G.HitboxSize); hrp.Transparency = 0.6 end
+                end
+            end
+            task.wait(0.2)
+        end
         for _, v in pairs(Players:GetPlayers()) do
             if v ~= LocalPlayer and v.Character then
                 local hrp = v.Character:FindFirstChild("HumanoidRootPart")
-                if hrp then
-                    hrp.Size = Vector3.new(_G.HitboxSize, _G.HitboxSize, _G.HitboxSize)
-                    hrp.Transparency = _G.HitboxTransparency
-                    hrp.Material = Enum.Material.Neon
-                    hrp.Color = Color3.fromRGB(255, 0, 0)
-                end
-                for _, part in ipairs(v.Character:GetDescendants()) do
-                    if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
-                        part.Size = Vector3.new(_G.HitboxSize * 0.5, _G.HitboxSize * 0.5, _G.HitboxSize * 0.5)
-                    end
-                end
+                if hrp then hrp.Size = Vector3.new(2,2,1); hrp.Transparency = 1 end
             end
         end
-        task.wait(0.2)
-    end
-    -- Reset
-    for _, v in pairs(Players:GetPlayers()) do
-        if v ~= LocalPlayer and v.Character then
-            local hrp = v.Character:FindFirstChild("HumanoidRootPart")
-            if hrp then
-                hrp.Size = Vector3.new(2, 2, 1)
-                hrp.Transparency = 1
-                hrp.Material = Enum.Material.Plastic
-            end
-        end
-    end
-end
+    end)()
+end})
 
-Hitbox:AddToggle("✦ Hitbox Expander", function(state)
-    _G.HitboxEnabled = state
-    if state then coroutine.wrap(HitboxLoop)() end
-end)
+HitboxTab:AddSlider({Name = "Hitbox Size", Min = 1, Max = 12, Default = 7, Color = Color3.fromRGB(255,0,0), Callback = function(v) _G.HitboxSize = v end})
 
-Hitbox:AddSlider("✦ Size", 1, 7, 12, function(v) _G.HitboxSize = v end, true)
+-- === ESP ===
+local ESPTab = Window:MakeTab({Name = "ESP", Icon = "rbxassetid://4483345998", PremiumOnly = false})
 
--- ===================== ESP & VISUALS =====================
-local Visuals = Window:AddSection("👁 ESP & VISUALS")
-
--- ESP Box
 _G.ESP = false
-Visuals:AddToggle("✦ ESP Box + Health", function(state)
-    _G.ESP = state
+ESPTab:AddToggle({Name = "ESP Box + Health", Default = false, Callback = function(v)
+    _G.ESP = v
     coroutine.wrap(function()
         while _G.ESP do
             for _, v in pairs(Players:GetPlayers()) do
@@ -360,42 +284,27 @@ Visuals:AddToggle("✦ ESP Box + Health", function(state)
                     if hrp then
                         local box = hrp:FindFirstChild("ESP_Box")
                         if not box then
-                            box = Instance.new("BoxHandleAdornment")
-                            box.Name = "ESP_Box"
-                            box.Adornee = hrp
-                            box.AlwaysOnTop = true
-                            box.ZIndex = 10
-                            box.Parent = hrp
+                            box = Instance.new("BoxHandleAdornment", hrp)
+                            box.Name = "ESP_Box"; box.Adornee = hrp; box.AlwaysOnTop = true; box.ZIndex = 10
                         end
-                        box.Size = Vector3.new(4, 6, 4)
+                        box.Size = Vector3.new(4,6,4)
                         box.Color3 = v.Team == LocalPlayer.Team and Color3.fromRGB(0,255,0) or Color3.fromRGB(255,50,50)
-                        box.Transparency = 0.4
-                        box.Visible = true
+                        box.Transparency = 0.4; box.Visible = true
                         
-                        -- Health bar
-                        local billboard = hrp:FindFirstChild("ESP_Health")
-                        if not billboard and v.Character:FindFirstChild("Humanoid") then
-                            billboard = Instance.new("BillboardGui")
-                            billboard.Name = "ESP_Health"
-                            billboard.Size = UDim2.new(0, 100, 0, 20)
-                            billboard.StudsOffset = Vector3.new(0, 3.5, 0)
-                            billboard.AlwaysOnTop = true
-                            local label = Instance.new("TextLabel", billboard)
-                            label.Size = UDim2.new(1, 0, 1, 0)
-                            label.BackgroundTransparency = 1
-                            label.TextScaled = true
-                            label.Font = Enum.Font.GothamBold
-                            label.TextColor3 = Color3.fromRGB(255, 255, 255)
-                            label.TextStrokeTransparency = 0.3
-                            billboard.Parent = hrp
+                        local hp = hrp:FindFirstChild("ESP_HP")
+                        if not hp and v.Character:FindFirstChild("Humanoid") then
+                            hp = Instance.new("BillboardGui", hrp)
+                            hp.Name = "ESP_HP"; hp.Size = UDim2.new(0,100,0,20)
+                            hp.StudsOffset = Vector3.new(0,3.5,0); hp.AlwaysOnTop = true
+                            local lbl = Instance.new("TextLabel", hp)
+                            lbl.Size = UDim2.new(1,0,1,0); lbl.BackgroundTransparency = 1
+                            lbl.TextScaled = true; lbl.Font = Enum.Font.GothamBold
+                            lbl.TextColor3 = Color3.fromRGB(255,255,255); lbl.TextStrokeTransparency = 0.3
                         end
-                        if billboard and billboard:IsA("BillboardGui") then
-                            local label = billboard:FindFirstChildOfClass("TextLabel")
-                            if label and v.Character:FindFirstChild("Humanoid") then
-                                label.Text = v.Name .. " [" .. math.floor(v.Character.Humanoid.Health) .. "HP]"
-                                label.TextColor3 = v.Character.Humanoid.Health > 50 and Color3.fromRGB(0,255,0) 
-                                    or v.Character.Humanoid.Health > 25 and Color3.fromRGB(255,200,0) 
-                                    or Color3.fromRGB(255,0,0)
+                        if hp and hp:IsA("BillboardGui") then
+                            local lbl = hp:FindFirstChildOfClass("TextLabel")
+                            if lbl and v.Character:FindFirstChild("Humanoid") then
+                                lbl.Text = v.Name .. " [" .. math.floor(v.Character.Humanoid.Health) .. "HP]"
                             end
                         end
                     end
@@ -403,40 +312,33 @@ Visuals:AddToggle("✦ ESP Box + Health", function(state)
             end
             task.wait(0.3)
         end
-        -- Cleanup
         for _, v in pairs(Players:GetPlayers()) do
             if v.Character then
                 local hrp = v.Character:FindFirstChild("HumanoidRootPart")
                 if hrp then
-                    local box = hrp:FindFirstChild("ESP_Box")
-                    if box then box:Destroy() end
-                    local hp = hrp:FindFirstChild("ESP_Health")
-                    if hp then hp:Destroy() end
+                    local b = hrp:FindFirstChild("ESP_Box"); if b then b:Destroy() end
+                    local h = hrp:FindFirstChild("ESP_HP"); if h then h:Destroy() end
                 end
             end
         end
     end)()
-end)
+end})
 
--- Wallbang
-_G.Wallbang = false
-Visuals:AddToggle("✦ Wallbang [X-Ray]", function(state)
-    _G.Wallbang = state
+_G.XRay = false
+ESPTab:AddToggle({Name = "X-Ray [See Through Walls]", Default = false, Callback = function(v)
+    _G.XRay = v
     for _, v in pairs(Players:GetPlayers()) do
         if v ~= LocalPlayer and v.Character then
             for _, part in ipairs(v.Character:GetDescendants()) do
-                if part:IsA("BasePart") then
-                    part.LocalTransparencyModifier = state and 0.2 or 0
-                end
+                if part:IsA("BasePart") then part.LocalTransparencyModifier = v and 0.2 or 0 end
             end
         end
     end
-end)
+end})
 
--- Player Tracers
 _G.Tracers = false
-Visuals:AddToggle("✦ Tracers", function(state)
-    _G.Tracers = state
+ESPTab:AddToggle({Name = "Tracers", Default = false, Callback = function(v)
+    _G.Tracers = v
     coroutine.wrap(function()
         while _G.Tracers do
             for _, v in pairs(Players:GetPlayers()) do
@@ -447,199 +349,155 @@ Visuals:AddToggle("✦ Tracers", function(state)
                         line.From = Vector2.new(Mouse.X, Mouse.Y)
                         line.To = Vector2.new(pos.X, pos.Y)
                         line.Color = v.Team == LocalPlayer.Team and Color3.fromRGB(0,255,0) or Color3.fromRGB(255,50,50)
-                        line.Thickness = 1
-                        line.Transparency = 0.6
-                        line.Visible = true
-                        task.wait(0.05)
-                        line:Remove()
+                        line.Thickness = 1; line.Transparency = 0.6; line.Visible = true
+                        task.wait(0.05); line:Remove()
                     end
                 end
             end
             RunService.RenderStepped:Wait()
         end
     end)()
-end)
+end})
 
--- FOV Circle
 _G.FOV = false
 _G.FOVSize = 120
-local fov = Drawing.new("Circle")
-fov.Visible = false
-fov.Thickness = 1.5
-fov.Color = Color3.fromRGB(0, 170, 255)
-fov.Transparency = 0.5
-fov.NumSides = 60
-fov.Filled = false
+local fovCircle = Drawing.new("Circle")
+fovCircle.Visible = false; fovCircle.Thickness = 1.5
+fovCircle.Color = Color3.fromRGB(0,170,255); fovCircle.Transparency = 0.5
+fovCircle.NumSides = 60; fovCircle.Filled = false
 
-Visuals:AddToggle("✦ FOV Circle", function(state)
-    _G.FOV = state
-    fov.Visible = state
-end)
-Visuals:AddSlider("✦ FOV Radius", 50, 120, 400, function(v)
-    _G.FOVSize = v
-end, true)
+ESPTab:AddToggle({Name = "FOV Circle", Default = false, Callback = function(v) _G.FOV = v; fovCircle.Visible = v end})
+ESPTab:AddSlider({Name = "FOV Radius", Min = 50, Max = 400, Default = 120, Color = Color3.fromRGB(0,170,255), Callback = function(v) _G.FOVSize = v end})
 
 RunService.RenderStepped:Connect(function()
     if _G.FOV then
-        fov.Position = UserInputService:GetMouseLocation()
-        fov.Radius = _G.FOVSize
+        fovCircle.Position = UserInputService:GetMouseLocation()
+        fovCircle.Radius = _G.FOVSize
     end
 end)
 
--- ===================== MOVEMENT =====================
-local Movement = Window:AddSection("🏃 MOVEMENT")
+-- === MOVEMENT ===
+local MoveTab = Window:MakeTab({Name = "Movement", Icon = "rbxassetid://4483345998", PremiumOnly = false})
 
 _G.WalkSpeed = 16
-Movement:AddSlider("✦ WalkSpeed", 16, 16, 28, function(v)
+MoveTab:AddSlider({Name = "WalkSpeed", Min = 16, Max = 28, Default = 16, Color = Color3.fromRGB(0,255,0), Callback = function(v)
     _G.WalkSpeed = v
     if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
         LocalPlayer.Character.Humanoid.WalkSpeed = v
     end
-end)
+end})
 
 _G.JumpPower = 50
-Movement:AddSlider("✦ Jump Power", 50, 50, 120, function(v)
+MoveTab:AddSlider({Name = "Jump Power", Min = 50, Max = 120, Default = 50, Color = Color3.fromRGB(0,255,0), Callback = function(v)
     _G.JumpPower = v
     if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
         LocalPlayer.Character.Humanoid.JumpPower = v
     end
-end)
+end})
 
 _G.NoClip = false
-Movement:AddToggle("✦ NoClip", function(state)
-    _G.NoClip = state
+MoveTab:AddToggle({Name = "NoClip", Default = false, Callback = function(v)
+    _G.NoClip = v
     coroutine.wrap(function()
         while _G.NoClip do
             if LocalPlayer.Character then
                 for _, part in ipairs(LocalPlayer.Character:GetDescendants()) do
-                    if part:IsA("BasePart") then
-                        part.CanCollide = false
-                    end
+                    if part:IsA("BasePart") then part.CanCollide = false end
                 end
             end
             task.wait(0.05)
         end
         if LocalPlayer.Character then
             for _, part in ipairs(LocalPlayer.Character:GetDescendants()) do
-                if part:IsA("BasePart") then
-                    part.CanCollide = true
-                end
+                if part:IsA("BasePart") then part.CanCollide = true end
             end
         end
     end)()
-end)
+end})
 
 _G.Fly = false
 _G.FlySpeed = 50
-local flyBodyVelocity = nil
-Movement:AddToggle("✦ Fly", function(state)
-    _G.Fly = state
-    if state then
+local bv = nil
+MoveTab:AddToggle({Name = "Fly", Default = false, Callback = function(v)
+    _G.Fly = v
+    if v then
         local char = LocalPlayer.Character
         if char and char:FindFirstChild("HumanoidRootPart") then
-            flyBodyVelocity = Instance.new("BodyVelocity")
-            flyBodyVelocity.MaxForce = Vector3.new(1, 1, 1) * math.huge
-            flyBodyVelocity.Velocity = Vector3.new(0, 0, 0)
-            flyBodyVelocity.Parent = char.HumanoidRootPart
-            
+            bv = Instance.new("BodyVelocity", char.HumanoidRootPart)
+            bv.MaxForce = Vector3.new(1,1,1) * math.huge
+            bv.Velocity = Vector3.new(0,0,0)
             coroutine.wrap(function()
                 while _G.Fly do
-                    local moveDir = Vector3.new()
-                    if UserInputService:IsKeyDown(Enum.KeyCode.W) then moveDir = moveDir + Camera.CFrame.LookVector end
-                    if UserInputService:IsKeyDown(Enum.KeyCode.S) then moveDir = moveDir - Camera.CFrame.LookVector end
-                    if UserInputService:IsKeyDown(Enum.KeyCode.A) then moveDir = moveDir - Camera.CFrame.RightVector end
-                    if UserInputService:IsKeyDown(Enum.KeyCode.D) then moveDir = moveDir + Camera.CFrame.RightVector end
-                    if UserInputService:IsKeyDown(Enum.KeyCode.Space) then moveDir = moveDir + Vector3.new(0, 1, 0) end
-                    if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then moveDir = moveDir - Vector3.new(0, 1, 0) end
-                    
-                    if moveDir.Magnitude > 0 then
-                        flyBodyVelocity.Velocity = moveDir.Unit * _G.FlySpeed
-                    else
-                        flyBodyVelocity.Velocity = Vector3.new(0, 0, 0)
-                    end
+                    local dir = Vector3.new()
+                    if UserInputService:IsKeyDown(Enum.KeyCode.W) then dir = dir + Camera.CFrame.LookVector end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.S) then dir = dir - Camera.CFrame.LookVector end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.A) then dir = dir - Camera.CFrame.RightVector end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.D) then dir = dir + Camera.CFrame.RightVector end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.Space) then dir = dir + Vector3.new(0,1,0) end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then dir = dir - Vector3.new(0,1,0) end
+                    bv.Velocity = dir.Magnitude > 0 and dir.Unit * _G.FlySpeed or Vector3.new(0,0,0)
                     task.wait(0.01)
                 end
             end)()
         end
-    else
-        if flyBodyVelocity then
-            flyBodyVelocity:Destroy()
-            flyBodyVelocity = nil
-        end
-    end
-end)
+    elseif bv then bv:Destroy(); bv = nil end
+end})
+MoveTab:AddSlider({Name = "Fly Speed", Min = 10, Max = 200, Default = 50, Color = Color3.fromRGB(0,255,0), Callback = function(v) _G.FlySpeed = v end})
 
-Movement:AddSlider("✦ Fly Speed", 10, 50, 200, function(v) _G.FlySpeed = v end, true)
-
--- ===================== MISC =====================
-local Misc = Window:AddSection("⚙ MISC")
+-- === MISC ===
+local MiscTab = Window:MakeTab({Name = "Misc", Icon = "rbxassetid://4483345998", PremiumOnly = false})
 
 _G.AutoWin = false
-Misc:AddToggle("✦ Auto Win", function(state)
-    _G.AutoWin = state
-    if state then
+MiscTab:AddToggle({Name = "Auto Win", Default = false, Callback = function(v)
+    _G.AutoWin = v
+    if v then
         coroutine.wrap(function()
             while _G.AutoWin do
-                local enemies = getAllEnemies()
-                for _, v in ipairs(enemies) do
-                    if isAlive(v.Character) then
-                        Shoot(v.Character)
-                        AntiBan:RandomDelay(0.05, 0.15)
-                    end
+                for _, v in ipairs(getAll()) do
+                    if isAlive(v.Character) then Shoot(v.Character); randDelay(0.05, 0.15) end
                 end
-                AntiBan:RandomDelay(2.0, 5.0)
+                randDelay(2.0, 5.0)
             end
         end)()
     end
-end)
+end})
 
-Misc:AddButton("✦ Reset Character", function()
+MiscTab:AddButton({Name = "Reset Character", Callback = function()
     if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
         LocalPlayer.Character.Humanoid.Health = 0
     end
-end)
+end})
 
-Misc:AddButton("✦ Rejoin Server", function()
+MiscTab:AddButton({Name = "Server Hop", Callback = function()
     local ts = game:GetService("TeleportService")
-    local placeId = game.PlaceId
-    local jobId = game.JobId
-    ts:TeleportToPlaceInstance(placeId, jobId, LocalPlayer)
-end)
-
-Misc:AddButton("✦ Server Hop", function()
-    local ts = game:GetService("TeleportService")
-    local placeId = game.PlaceId
-    local http = game:GetService("HttpService")
-    local res = game:HttpGet("https://games.roblox.com/v1/games/" .. placeId .. "/servers/Public?limit=100")
-    local data = http:JSONDecode(res)
-    for _, server in ipairs(data.data) do
-        if server.id ~= game.JobId and server.playing < server.maxPlayers then
-            ts:TeleportToPlaceInstance(placeId, server.id, LocalPlayer)
+    local res = game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?limit=100")
+    local data = game:GetService("HttpService"):JSONDecode(res)
+    for _, s in ipairs(data.data) do
+        if s.id ~= game.JobId and s.playing < s.maxPlayers then
+            ts:TeleportToPlaceInstance(game.PlaceId, s.id, LocalPlayer)
             return
         end
     end
-end)
+end})
 
--- Info
-Misc:AddButton("✦ Script Info", function()
-    print("========================================")
-    print("  DELTA PRO MVSD ULTIMATE")
-    print("  KARTAL BEY © 2026")
-    print("========================================")
-    print("  Shoot: " .. tostring(ShootRemote))
-    print("  Stab: " .. tostring(StabRemote))
-    print("  Players: " .. #Players:GetPlayers())
-    print("  Anti-Ban: AKTIF")
-    print("========================================")
-end)
+MiscTab:AddButton({Name = "Script Info", Callback = function()
+    print("=== DELTA PRO MVSD | KARTAL BEY ===")
+    print("Shoot: " .. tostring(ShootRemote))
+    print("Stab: " .. tostring(StabRemote))
+    print("Anti-Ban: AKTIF")
+    print("===================================")
+end})
 
--- ===================== BAŞLANGIÇ =====================
+OrionLib:Init()
+
+-- Bildirim
 game:GetService("StarterGui"):SetCore("SendNotification", {
     Title = "KARTAL BEY",
-    Text = "Delta Pro MVSD Ultimate yüklendi! Tüm özellikler bansız.",
-    Duration = 5
+    Text = "Delta Pro MVSD yuklendi! Tum ozellikler bansiz.",
+    Duration = 4
 })
 
-print("=== DELTA PRO MVSD ULTIMATE | KARTAL BEY ===")
-print("Tüm özellikler %100 anti-ban korumalıdır.")
-print("============================================")
+print("=== DELTA PRO MVSD | KARTAL BEY ===")
+print("OrionLib tabanli - Delta uyumlu")
+print("Tum ozellikler anti-ban korumali")
+print("====================================")
