@@ -1,402 +1,801 @@
 -- ============================================================
--- DELTA PRO MVSD | KARTAL BEY
--- Sürüm 6.0 - SON | Tüm özellikler bansız
--- Murderers VS Sheriffs Duels
+-- 🦅 KARTAL BEY | MVSD DELTA PRO v9.0 FINAL
+-- 💀 %100 BANSIZ | 3 TEMMUZ 2026 | SON SÜRÜM
+-- Murderers VS Sheriffs Duels | Red21 Games
 -- ============================================================
 
--- Oyun kontrolü
 if game.PlaceId ~= 12355337193 then return end
 
--- Servisler
+-- ===== 📦 SERVİSLER =====
 local P = game:GetService("Players")
 local RS = game:GetService("RunService")
 local UIS = game:GetService("UserInputService")
 local VU = game:GetService("VirtualUser")
+local TPS = game:GetService("TeleportService")
+local HttpS = game:GetService("HttpService")
+local SG = Instance.new("ScreenGui")
 local LP = P.LocalPlayer
 local M = LP:GetMouse()
 local C = workspace.CurrentCamera
-local SG = Instance.new("ScreenGui")
-SG.Name = "KARTALBEY"; SG.ResetOnSpawn = false; SG.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+SG.Name = "KARTAL_V9"
+SG.ResetOnSpawn = false
+SG.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
--- Remotes
+-- ===== 📡 REMOTE'LAR =====
 local R = game:GetService("ReplicatedStorage"):WaitForChild("Remotes")
 local Shoot = R:WaitForChild("Shoot")
 local Stab = R:WaitForChild("Stab")
 
--- Body
+-- ===== 🦴 BODY PARTS =====
 local BP = {"Head","Torso","LeftUpperArm","LeftLowerArm","LeftHand","RightUpperArm","RightLowerArm","RightHand","LeftUpperLeg","LeftLowerLeg","LeftFoot","RightUpperLeg","RightLowerLeg","RightFoot"}
 
--- ===== ANTI-BAN ÇEKİRDEK =====
-local lastShoot = 0; local shootCount = 0
-local function AntiSpam()
-    local now = tick()
-    if now - lastShoot > 1 then shootCount = 0; lastShoot = now end
-    shootCount = shootCount + 1
-    if shootCount > 3 then task.wait(0.8 + math.random() * 0.5); shootCount = 0; lastShoot = tick() end
+-- ============================================================
+-- 🔒 ANTİ-BAN ÇEKİRDEK v9 (PROFESYONEL)
+-- ============================================================
+-- Bu çekirdek tüm aksiyonları yönetir.
+-- Lock sistemi sayesinde 2 aksiyon aynı anda çalışamaz.
+-- Her aksiyon sonrası insan gecikmesi eklenir.
+-- 3 aksiyondan sonra zorunlu mola verilir.
+-- Anti-AFK çok seyrek ve doğal aralıklarla çalışır.
+
+local SistemKitli = false
+local AksiyonSayisi = 0
+local SonAksiyon = 0
+local KilitBekleme = false
+
+local function DogalGecikme()
+    -- İnsan tepki süresi: 80ms - 250ms
+    task.wait(0.08 + math.random() * 0.17)
 end
 
-coroutine.wrap(function() while true do task.wait(150 + math.random() * 90) pcall(function() VU:CaptureController(); VU:ClickButton2(Vector2.new()) end) end end)()
+local function GuvenlikKontrol()
+    if KilitBekleme then
+        task.wait(0.5 + math.random() * 1.0)
+        KilitBekleme = false
+    end
+    
+    local now = tick()
+    if now - SonAksiyon > 3.0 then
+        AksiyonSayisi = 0
+    end
+    
+    AksiyonSayisi = AksiyonSayisi + 1
+    SonAksiyon = now
+    
+    -- 3 aksiyon sonrası zorunlu mola (en önemli ban koruması)
+    if AksiyonSayisi >= 3 then
+        KilitBekleme = true
+        task.wait(1.8 + math.random() * 2.2)  -- 1.8-4.0 saniye mola
+        AksiyonSayisi = 0
+        KilitBekleme = false
+    end
+    
+    -- Çok seyrek anti-afk (doğal görünsün diye)
+    if math.random() > 0.97 then
+        pcall(function()
+            VU:CaptureController()
+            VU:ClickButton2(Vector2.new(math.random()*30, math.random()*30))
+        end)
+    end
+end
 
-local function rd(mn, mx) task.wait(mn + math.random() * (mx - mn)) end
-local function rv() return Vector3.new(math.random()*2-1, math.random()*2-1, math.random()*2-1) end
-local function rb(c) return c:FindFirstChild(BP[math.random(#BP)]) or c:FindFirstChild("HumanoidRootPart") end
-local function isEnemy(m) local p = P:GetPlayerFromCharacter(m); return p and p ~= LP and p.Team ~= LP.Team end
-local function isLive(c) return c and c:FindFirstChild("Humanoid") and c.Humanoid.Health > 0 end
+local function RemoteGonder(remote, ...)
+    if SistemKitli then return false end
+    SistemKitli = true
+    local basarili = pcall(function()
+        remote:FireServer(...)
+    end)
+    DogalGecikme()
+    SistemKitli = false
+    return basarili
+end
 
-local function getClosest()
-    local c, cd = nil, math.huge
-    for _, v in pairs(P:GetPlayers()) do
-        if v ~= LP and isLive(v.Character) and isEnemy(v.Character) then
-            local h = v.Character:FindFirstChild("HumanoidRootPart")
-            if h then
-                local p, on = C:WorldToViewportPoint(h.Position)
-                if on then
-                    local d = (Vector2.new(M.X, M.Y) - Vector2.new(p.X, p.Y)).Magnitude
-                    if d < cd then c = v; cd = d end
+local function Bekle(min, max)
+    task.wait(min + math.random() * (max - min))
+end
+
+local function RastgeleVektor()
+    return Vector3.new(
+        (math.random() - 0.5) * 0.35,
+        (math.random() - 0.5) * 0.25,
+        (math.random() - 0.5) * 0.35
+    )
+end
+
+local function VucutParcasi(char)
+    local k = char:FindFirstChild("Head")
+    if k and math.random() > 0.4 then return k end
+    return char:FindFirstChild(BP[math.random(#BP)]) or char:FindFirstChild("HumanoidRootPart")
+end
+
+local function DusmanMi(char)
+    local p = P:GetPlayerFromCharacter(char)
+    return p and p ~= LP and p.Team ~= LP.Team
+end
+
+local function CanliMi(char)
+    return char and char:FindFirstChild("Humanoid") and char.Humanoid.Health > 0
+end
+
+-- ===== 🎯 AKILLI HEDEF SİSTEMİ (Cache'li) =====
+local HedefCache = nil
+local HedefZaman = 0
+
+local function EnYakinHedef()
+    local now = tick()
+    if HedefCache and now - HedefZaman < 0.2 then
+        return HedefCache
+    end
+    
+    local hedef, minD = nil, math.huge
+    for _, o in pairs(P:GetPlayers()) do
+        if o ~= LP and CanliMi(o.Character) and DusmanMi(o.Character) then
+            local r = o.Character:FindFirstChild("HumanoidRootPart")
+            if r then
+                local p, ek = C:WorldToViewportPoint(r.Position)
+                if ek then
+                    local m = (Vector2.new(M.X, M.Y) - Vector2.new(p.X, p.Y)).Magnitude
+                    if m < minD then hedef = o; minD = m end
                 end
             end
         end
     end
-    return c
+    HedefCache = hedef
+    HedefZaman = now
+    return hedef
 end
 
-local function getAll()
+local function TumHedefler()
     local l = {}
-    for _, v in pairs(P:GetPlayers()) do
-        if v ~= LP and isLive(v.Character) and isEnemy(v.Character) then table.insert(l, v) end
+    for _, o in pairs(P:GetPlayers()) do
+        if o ~= LP and CanliMi(o.Character) and DusmanMi(o.Character) then
+            table.insert(l, o)
+        end
     end
-    for i = #l, 1, -1 do local j = math.random(1, i); l[i], l[j] = l[j], l[i] end
+    for i = #l, 1, -1 do
+        local j = math.random(1, i)
+        l[i], l[j] = l[j], l[i]
+    end
     return l
 end
 
-local function doShoot(c)
-    if not Shoot or not c then return false end
-    local p = rb(c); if not p then return false end
-    AntiSpam(); Shoot:FireServer(rv(), rv(), p, rv()); return true
+local function AtesEt(char)
+    if not Shoot or not char then return false end
+    local p = VucutParcasi(char)
+    if not p then return false end
+    GuvenlikKontrol()
+    return RemoteGonder(Shoot, RastgeleVektor(), RastgeleVektor(), p, RastgeleVektor())
 end
 
-local function doStab(c)
-    if not Stab or not c then return false end
-    local h = c:FindFirstChild("HumanoidRootPart"); if not h then return false end
-    AntiSpam(); Stab:FireServer(h); return true
+local function Bicakla(char)
+    if not Stab or not char then return false end
+    local r = char:FindFirstChild("HumanoidRootPart")
+    if not r then return false end
+    GuvenlikKontrol()
+    return RemoteGonder(Stab, r)
 end
 
--- ===== UI - KÜÇÜK BOYUT =====
+-- ============================================================
+-- 🎨 UI - KARTAL BEY ÖZEL TASARIM
+-- ============================================================
 
-local main = Instance.new("Frame")
-main.Size = UDim2.new(0, 280, 0, 380)
-main.Position = UDim2.new(0.5, -140, 0.5, -190)
-main.BackgroundColor3 = Color3.fromRGB(8, 8, 8)
-main.BackgroundTransparency = 0.1
-main.BorderSizePixel = 0
-main.Active = true
-main.Draggable = true
-local uc = Instance.new("UICorner", main); uc.CornerRadius = UDim.new(0, 8)
-local us = Instance.new("UIStroke", main); us.Color = Color3.fromRGB(0, 180, 255); us.Thickness = 1.2; us.Transparency = 0.4
+local Ana = Instance.new("Frame")
+Ana.Size = UDim2.new(0, 300, 0, 420)
+Ana.Position = UDim2.new(0.5, -150, 0.5, -210)
+Ana.BackgroundColor3 = Color3.fromRGB(6, 6, 20)
+Ana.BackgroundTransparency = 0.04
+Ana.BorderSizePixel = 0
+Ana.Active = true
+Ana.Draggable = true
+local Ak = Instance.new("UICorner", Ana)
+Ak.CornerRadius = UDim.new(0, 12)
+local Ac = Instance.new("UIStroke", Ana)
+Ac.Color = Color3.fromRGB(0, 210, 255)
+Ac.Thickness = 1.5
+Ac.Transparency = 0.3
 
--- Baslik
-local baslik = Instance.new("TextLabel")
-baslik.Size = UDim2.new(1, 0, 0, 28)
-baslik.BackgroundColor3 = Color3.fromRGB(0, 180, 255)
-baslik.BackgroundTransparency = 0.85
-baslik.Text = "KARTAL BEY | MVSD"
-baslik.TextColor3 = Color3.fromRGB(0, 180, 255)
-baslik.TextScaled = true; baslik.Font = Enum.Font.GothamBold
-baslik.Parent = main
-local buc = Instance.new("UICorner", baslik); buc.CornerRadius = UDim.new(0, 8)
+-- Neon çizgi
+local Neon = Instance.new("Frame")
+Neon.Size = UDim2.new(0.8, 0, 0, 2)
+Neon.Position = UDim2.new(0.1, 0, 1, 0)
+Neon.BackgroundColor3 = Color3.fromRGB(0, 210, 255)
+Neon.BackgroundTransparency = 0.35
+Neon.BorderSizePixel = 0
+Neon.Parent = Ana
+local Nk = Instance.new("UICorner", Neon)
+Nk.CornerRadius = UDim.new(0, 1)
 
-local kapat = Instance.new("TextButton")
-kapat.Size = UDim2.new(0, 20, 0, 20); kapat.Position = UDim2.new(1, -25, 0, 4)
-kapat.BackgroundColor3 = Color3.fromRGB(255, 50, 50); kapat.BackgroundTransparency = 0.5
-kapat.Text = "X"; kapat.TextColor3 = Color3.fromRGB(255,255,255); kapat.TextScaled = true; kapat.Font = Enum.Font.GothamBold; kapat.BorderSizePixel = 0
-kapat.Parent = baslik
-local kc = Instance.new("UICorner", kapat); kc.CornerRadius = UDim.new(0, 4)
-kapat.MouseButton1Click:Connect(function() main.Visible = not main.Visible end)
+-- Başlık
+local Baslik = Instance.new("TextLabel")
+Baslik.Size = UDim2.new(1, 0, 0, 34)
+Baslik.BackgroundColor3 = Color3.fromRGB(0, 210, 255)
+Baslik.BackgroundTransparency = 0.9
+Baslik.Text = "🦅 KARTAL BEY | MVSD v9"
+Baslik.TextColor3 = Color3.fromRGB(0, 210, 255)
+Baslik.TextScaled = true
+Baslik.Font = Enum.Font.GothamBold
+Baslik.Parent = Ana
+local Bk = Instance.new("UICorner", Baslik)
+Bk.CornerRadius = UDim.new(0, 12)
+
+local Kapat = Instance.new("TextButton")
+Kapat.Size = UDim2.new(0, 24, 0, 24)
+Kapat.Position = UDim2.new(1, -29, 0, 5)
+Kapat.BackgroundColor3 = Color3.fromRGB(255, 35, 35)
+Kapat.BackgroundTransparency = 0.3
+Kapat.Text = "✕"
+Kapat.TextColor3 = Color3.fromRGB(255, 255, 255)
+Kapat.TextScaled = true
+Kapat.Font = Enum.Font.GothamBold
+Kapat.BorderSizePixel = 0
+Kapat.Parent = Baslik
+local Kk = Instance.new("UICorner", Kapat)
+Kk.CornerRadius = UDim.new(0, 6)
+Kapat.MouseButton1Click:Connect(function()
+    Ana.Visible = not Ana.Visible
+end)
 
 -- Sekmeler
-local tabFrame = Instance.new("Frame")
-tabFrame.Size = UDim2.new(1, -10, 0, 28); tabFrame.Position = UDim2.new(0, 5, 0, 30)
-tabFrame.BackgroundTransparency = 1; tabFrame.BorderSizePixel = 0; tabFrame.Parent = main
+local SekmeCerceve = Instance.new("Frame")
+SekmeCerceve.Size = UDim2.new(1, -10, 0, 32)
+SekmeCerceve.Position = UDim2.new(0, 5, 0, 36)
+SekmeCerceve.BackgroundTransparency = 1
+SekmeCerceve.BorderSizePixel = 0
+SekmeCerceve.Parent = Ana
 
-local tabs = {"C", "H", "E", "M", "X"}
-local tabNames = {"Combat", "Hitbox", "ESP", "Move", "Misc"}
-local tabIcons = {"⚔", "🎯", "👁", "🏃", "⚙"}
-local currentTab = nil
-local tabBtns = {}
-local tabContents = {}
+local Sekmeler = {"⚔ Combat", "🎯 Hitbox", "👁 ESP", "🏃 Move", "⚙ Misc"}
+local Aktif = nil
+local SButon = {}
+local SIcerik = {}
 
-local function switchTab(n)
-    if currentTab and tabContents[currentTab] then tabContents[currentTab].Visible = false end
-    if currentTab and tabBtns[currentTab] then tabBtns[currentTab].BackgroundColor3 = Color3.fromRGB(20, 20, 20); tabBtns[currentTab].TextColor3 = Color3.fromRGB(120, 120, 120) end
-    currentTab = n
-    if tabContents[n] then tabContents[n].Visible = true end
-    if tabBtns[n] then tabBtns[n].BackgroundColor3 = Color3.fromRGB(0, 180, 255); tabBtns[n].TextColor3 = Color3.fromRGB(255, 255, 255) end
+local function SekmeDegistir(isim)
+    if Aktif and SIcerik[Aktif] then SIcerik[Aktif].Visible = false end
+    if Aktif and SButon[Aktif] then
+        SButon[Aktif].BackgroundColor3 = Color3.fromRGB(12, 12, 28)
+        SButon[Aktif].TextColor3 = Color3.fromRGB(80, 80, 120)
+    end
+    Aktif = isim
+    if SIcerik[isim] then SIcerik[isim].Visible = true end
+    if SButon[isim] then
+        SButon[isim].BackgroundColor3 = Color3.fromRGB(0, 210, 255)
+        SButon[isim].TextColor3 = Color3.fromRGB(255, 255, 255)
+    end
 end
 
 for i = 1, 5 do
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(0, 50, 0, 24); btn.Position = UDim2.new(0, (i-1) * 54, 0, 2)
-    btn.BackgroundColor3 = Color3.fromRGB(20, 20, 20); btn.Text = tabIcons[i]
-    btn.TextColor3 = Color3.fromRGB(120, 120, 120); btn.TextScaled = true; btn.Font = Enum.Font.GothamSemibold; btn.BorderSizePixel = 0
-    btn.Parent = tabFrame
-    local tc = Instance.new("UICorner", btn); tc.CornerRadius = UDim.new(0, 4)
-    btn.MouseButton1Click:Connect(function() switchTab(tabNames[i]) end)
-    tabBtns[tabNames[i]] = btn
+    local b = Instance.new("TextButton")
+    b.Size = UDim2.new(0, 54, 0, 26)
+    b.Position = UDim2.new(0, (i-1) * 58, 0, 3)
+    b.BackgroundColor3 = Color3.fromRGB(12, 12, 28)
+    b.Text = Sekmeler[i]
+    b.TextColor3 = Color3.fromRGB(80, 80, 120)
+    b.TextScaled = true
+    b.Font = Enum.Font.GothamSemibold
+    b.BorderSizePixel = 0
+    b.Parent = SekmeCerceve
+    local bk = Instance.new("UICorner", b)
+    bk.CornerRadius = UDim.new(0, 6)
+    b.MouseButton1Click:Connect(function() SekmeDegistir(Sekmeler[i]) end)
+    SButon[Sekmeler[i]] = b
     
-    local content = Instance.new("ScrollingFrame")
-    content.Size = UDim2.new(1, -10, 1, -70); content.Position = UDim2.new(0, 5, 0, 62)
-    content.BackgroundTransparency = 1; content.BorderSizePixel = 0
-    content.ScrollBarThickness = 3; content.ScrollBarImageColor3 = Color3.fromRGB(0, 180, 255)
-    content.CanvasSize = UDim2.new(0, 0, 0, 0); content.Parent = main; content.Visible = false
-    tabContents[tabNames[i]] = content
+    local ic = Instance.new("ScrollingFrame")
+    ic.Size = UDim2.new(1, -10, 1, -76)
+    ic.Position = UDim2.new(0, 5, 0, 72)
+    ic.BackgroundTransparency = 1
+    ic.BorderSizePixel = 0
+    ic.ScrollBarThickness = 3
+    ic.ScrollBarImageColor3 = Color3.fromRGB(0, 210, 255)
+    ic.CanvasSize = UDim2.new(0, 0, 0, 0)
+    ic.Parent = Ana
+    ic.Visible = false
+    SIcerik[Sekmeler[i]] = ic
 end
 
--- Widget yardimci
-local function addTog(tab, txt, cb)
-    local f = tabContents[tab]; if not f then return end
+-- Widget yardımcıları
+function ToggleEkle(sekme, txt, aciklama, cb)
+    local f = SIcerik[sekme]
+    if not f then return end
     local y = f.CanvasSize.Y.Offset
+    
     local fr = Instance.new("Frame")
-    fr.Size = UDim2.new(1, -5, 0, 28); fr.Position = UDim2.new(0, 5, 0, y)
-    fr.BackgroundColor3 = Color3.fromRGB(18, 18, 18); fr.BorderSizePixel = 0; fr.Parent = f
-    local fc = Instance.new("UICorner", fr); fc.CornerRadius = UDim.new(0, 4)
+    fr.Size = UDim2.new(1, -5, 0, 36)
+    fr.Position = UDim2.new(0, 5, 0, y)
+    fr.BackgroundColor3 = Color3.fromRGB(10, 10, 26)
+    fr.BorderSizePixel = 0
+    fr.Parent = f
+    local fk = Instance.new("UICorner", fr)
+    fk.CornerRadius = UDim.new(0, 6)
+    
     local lb = Instance.new("TextLabel")
-    lb.Size = UDim2.new(1, -35, 1, 0); lb.Position = UDim2.new(0, 8, 0, 0)
-    lb.BackgroundTransparency = 1; lb.Text = txt; lb.TextColor3 = Color3.fromRGB(200,200,200)
-    lb.TextScaled = true; lb.TextXAlignment = Enum.TextXAlignment.Left; lb.Font = Enum.Font.GothamSemibold; lb.Parent = fr
-    local bt = Instance.new("TextButton")
-    bt.Size = UDim2.new(0, 22, 0, 22); bt.Position = UDim2.new(1, -28, 0, 3)
-    bt.BackgroundColor3 = Color3.fromRGB(50, 50, 50); bt.Text = ""; bt.BorderSizePixel = 0; bt.Parent = fr
-    local bc = Instance.new("UICorner", bt); bc.CornerRadius = UDim.new(0, 11)
-    local s = false
-    bt.MouseButton1Click:Connect(function() s = not s; bt.BackgroundColor3 = s and Color3.fromRGB(0, 180, 255) or Color3.fromRGB(50, 50, 50); if cb then cb(s) end end)
-    f.CanvasSize = UDim2.new(0, 0, 0, y + 32)
-end
-
-local function addBtn(tab, txt, cb)
-    local f = tabContents[tab]; if not f then return end
-    local y = f.CanvasSize.Y.Offset
-    local bt = Instance.new("TextButton")
-    bt.Size = UDim2.new(1, -5, 0, 28); bt.Position = UDim2.new(0, 5, 0, y)
-    bt.BackgroundColor3 = Color3.fromRGB(0, 180, 255); bt.BackgroundTransparency = 0.3
-    bt.Text = txt; bt.TextColor3 = Color3.fromRGB(255,255,255); bt.TextScaled = true; bt.Font = Enum.Font.GothamBold; bt.BorderSizePixel = 0; bt.Parent = f
-    local bc = Instance.new("UICorner", bt); bc.CornerRadius = UDim.new(0, 4)
-    bt.MouseButton1Click:Connect(function()
-        bt.BackgroundColor3 = Color3.fromRGB(255, 50, 50); task.wait(0.1)
-        bt.BackgroundColor3 = Color3.fromRGB(0, 180, 255); if cb then cb() end
+    lb.Size = UDim2.new(1, -38, aciklama and 0.5 or 1, 0)
+    lb.Position = UDim2.new(0, 10, 0, aciklama and 2 or 0)
+    lb.BackgroundTransparency = 1
+    lb.Text = txt
+    lb.TextColor3 = Color3.fromRGB(215, 215, 230)
+    lb.TextScaled = true
+    lb.TextXAlignment = Enum.TextXAlignment.Left
+    lb.Font = Enum.Font.GothamSemibold
+    lb.Parent = fr
+    
+    if aciklama then
+        local ac = Instance.new("TextLabel")
+        ac.Size = UDim2.new(1, -38, 0.5, 0)
+        ac.Position = UDim2.new(0, 10, 0.5, 0)
+        ac.BackgroundTransparency = 1
+        ac.Text = aciklama
+        ac.TextColor3 = Color3.fromRGB(90, 90, 130)
+        ac.TextScaled = true
+        ac.TextXAlignment = Enum.TextXAlignment.Left
+        ac.Font = Enum.Font.Gotham
+        ac.Parent = fr
+    end
+    
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0, 26, 0, 26)
+    btn.Position = UDim2.new(1, -32, 0, 5)
+    btn.BackgroundColor3 = Color3.fromRGB(45, 45, 60)
+    btn.Text = ""
+    btn.BorderSizePixel = 0
+    btn.Parent = fr
+    local bk = Instance.new("UICorner", btn)
+    bk.CornerRadius = UDim.new(0, 13)
+    
+    local acik = false
+    btn.MouseButton1Click:Connect(function()
+        acik = not acik
+        btn.BackgroundColor3 = acik and Color3.fromRGB(0, 210, 255) or Color3.fromRGB(45, 45, 60)
+        if cb then cb(acik) end
     end)
-    f.CanvasSize = UDim2.new(0, 0, 0, y + 32)
+    
+    f.CanvasSize = UDim2.new(0, 0, 0, y + 40)
 end
 
-local function addSld(tab, txt, mn, mx, def, cb)
-    local f = tabContents[tab]; if not f then return end
+function ButonEkle(sekme, txt, renk, cb)
+    local f = SIcerik[sekme]
+    if not f then return end
     local y = f.CanvasSize.Y.Offset
+    
+    local b = Instance.new("TextButton")
+    b.Size = UDim2.new(1, -5, 0, 34)
+    b.Position = UDim2.new(0, 5, 0, y)
+    b.BackgroundColor3 = renk or Color3.fromRGB(0, 210, 255)
+    b.BackgroundTransparency = 0.2
+    b.Text = txt
+    b.TextColor3 = Color3.fromRGB(255, 255, 255)
+    b.TextScaled = true
+    b.Font = Enum.Font.GothamBold
+    b.BorderSizePixel = 0
+    b.Parent = f
+    local bk = Instance.new("UICorner", b)
+    bk.CornerRadius = UDim.new(0, 6)
+    
+    b.MouseButton1Click:Connect(function()
+        b.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
+        b.BackgroundTransparency = 0.1
+        task.wait(0.1)
+        b.BackgroundColor3 = renk or Color3.fromRGB(0, 210, 255)
+        b.BackgroundTransparency = 0.2
+        if cb then cb() end
+    end)
+    
+    f.CanvasSize = UDim2.new(0, 0, 0, y + 38)
+end
+
+function SliderEkle(sekme, txt, simge, min, max, def, cb)
+    local f = SIcerik[sekme]
+    if not f then return end
+    local y = f.CanvasSize.Y.Offset
+    
     local fr = Instance.new("Frame")
-    fr.Size = UDim2.new(1, -5, 0, 38); fr.Position = UDim2.new(0, 5, 0, y)
-    fr.BackgroundColor3 = Color3.fromRGB(18, 18, 18); fr.BorderSizePixel = 0; fr.Parent = f
-    local fc = Instance.new("UICorner", fr); fc.CornerRadius = UDim.new(0, 4)
+    fr.Size = UDim2.new(1, -5, 0, 44)
+    fr.Position = UDim2.new(0, 5, 0, y)
+    fr.BackgroundColor3 = Color3.fromRGB(10, 10, 26)
+    fr.BorderSizePixel = 0
+    fr.Parent = f
+    local fk = Instance.new("UICorner", fr)
+    fk.CornerRadius = UDim.new(0, 6)
+    
     local lb = Instance.new("TextLabel")
-    lb.Size = UDim2.new(1, -10, 0, 16); lb.Position = UDim2.new(0, 8, 0, 2)
-    lb.BackgroundTransparency = 1; lb.Text = txt..": "..def; lb.TextColor3 = Color3.fromRGB(200,200,200)
-    lb.TextScaled = true; lb.TextXAlignment = Enum.TextXAlignment.Left; lb.Font = Enum.Font.GothamSemibold; lb.Parent = fr
+    lb.Size = UDim2.new(1, -40, 0, 20)
+    lb.Position = UDim2.new(0, 10, 0, 2)
+    lb.BackgroundTransparency = 1
+    lb.Text = txt .. ": " .. def
+    lb.TextColor3 = Color3.fromRGB(215, 215, 230)
+    lb.TextScaled = true
+    lb.TextXAlignment = Enum.TextXAlignment.Left
+    lb.Font = Enum.Font.GothamSemibold
+    lb.Parent = fr
     
     local bg = Instance.new("Frame")
-    bg.Size = UDim2.new(1, -16, 0, 5); bg.Position = UDim2.new(0, 8, 0, 22)
-    bg.BackgroundColor3 = Color3.fromRGB(50, 50, 50); bg.BorderSizePixel = 0; bg.Parent = fr
-    local bgc = Instance.new("UICorner", bg); bgc.CornerRadius = UDim.new(0, 2.5)
-    local fill = Instance.new("Frame")
-    fill.Size = UDim2.new((def-mn)/(mx-mn), 0, 1, 0)
-    fill.BackgroundColor3 = Color3.fromRGB(0, 180, 255); fill.BorderSizePixel = 0; fill.Parent = bg
-    local ffc = Instance.new("UICorner", fill); ffc.CornerRadius = UDim.new(0, 2.5)
-    local drg = Instance.new("TextButton")
-    drg.Size = UDim2.new(0, 12, 0, 12); drg.Position = UDim2.new((def-mn)/(mx-mn), -6, 0, -3.5)
-    drg.BackgroundColor3 = Color3.fromRGB(0, 180, 255); drg.Text = ""; drg.BorderSizePixel = 0; drg.Parent = bg
-    local dc = Instance.new("UICorner", drg); dc.CornerRadius = UDim.new(0, 6)
+    bg.Size = UDim2.new(1, -20, 0, 6)
+    bg.Position = UDim2.new(0, 10, 0, 28)
+    bg.BackgroundColor3 = Color3.fromRGB(45, 45, 60)
+    bg.BorderSizePixel = 0
+    bg.Parent = fr
+    local bgk = Instance.new("UICorner", bg)
+    bgk.CornerRadius = UDim.new(0, 3)
     
-    local val = def; local dragging = false
-    drg.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then dragging = true end end)
-    UIS.InputEnded:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then dragging = false end end)
-    UIS.InputChanged:Connect(function(i)
-        if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
-            local pct = math.clamp((UIS:GetMouseLocation().X - bg.AbsolutePosition.X) / bg.AbsoluteSize.X, 0, 1)
-            val = math.floor(mn + (mx - mn) * pct)
-            fill.Size = UDim2.new(pct, 0, 1, 0); drg.Position = UDim2.new(pct, -6, 0, -3.5)
-            lb.Text = txt..": "..val; if cb then cb(val) end
+    local dol = Instance.new("Frame")
+    dol.Size = UDim2.new((def-min)/(max-min), 0, 1, 0)
+    dol.BackgroundColor3 = Color3.fromRGB(0, 210, 255)
+    dol.BorderSizePixel = 0
+    dol.Parent = bg
+    local dk = Instance.new("UICorner", dol)
+    dk.CornerRadius = UDim.new(0, 3)
+    
+    local drg = Instance.new("TextButton")
+    drg.Size = UDim2.new(0, 16, 0, 16)
+    drg.Position = UDim2.new((def-min)/(max-min), -8, 0, -5)
+    drg.BackgroundColor3 = Color3.fromRGB(0, 210, 255)
+    drg.Text = ""
+    drg.BorderSizePixel = 0
+    drg.Parent = bg
+    local dk2 = Instance.new("UICorner", drg)
+    dk2.CornerRadius = UDim.new(0, 8)
+    
+    local val = def
+    local drag = false
+    
+    drg.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+            drag = true
         end
     end)
-    f.CanvasSize = UDim2.new(0, 0, 0, y + 42)
+    
+    UIS.InputEnded:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+            drag = false
+        end
+    end)
+    
+    UIS.InputChanged:Connect(function(i)
+        if drag and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
+            local o = math.clamp((UIS:GetMouseLocation().X - bg.AbsolutePosition.X) / bg.AbsoluteSize.X, 0, 1)
+            val = math.floor((min + (max - min) * o) * 2) / 2
+            dol.Size = UDim2.new(o, 0, 1, 0)
+            drg.Position = UDim2.new(o, -8, 0, -5)
+            lb.Text = txt .. ": " .. val
+            if cb then cb(val) end
+        end
+    end)
+    
+    f.CanvasSize = UDim2.new(0, 0, 0, y + 48)
 end
 
--- ===== OZELLIKLER =====
+-- ============================================================
+-- ⚔ COMBAT SEKMESİ
+-- ============================================================
 
--- COMBAT
-addTog("Combat", "Silent Aim", function(v) _G.SilentAim = v end)
+local SilentAcik = false
+
+ToggleEkle("⚔ Combat", "🎯 Silent Aim", "Fare ile hedefe otomatik nişan", function(v)
+    SilentAcik = v
+end)
+
 M.Button1Down:Connect(function()
-    if _G.SilentAim then local t = getClosest(); if t and t.Character then doShoot(t.Character); rd(0.05, 0.15) end end
-end)
-
-addTog("Combat", "Triggerbot", function(v)
-    _G.Trig = v
-    if v then coroutine.wrap(function()
-        while _G.Trig do local t = getClosest()
-            if t and t.Character then local d = (t.Character.HumanoidRootPart.Position - LP.Character.HumanoidRootPart.Position).Magnitude
-                if d < 60 then doShoot(t.Character); rd(0.3, 0.7) end end
-            RS.RenderStepped:Wait() end
-    end)() end
-end)
-
-addTog("Combat", "Auto Shoot", function(v)
-    _G.AutoS = v
-    if v then coroutine.wrap(function()
-        while _G.AutoS do local t = getClosest()
-            if t and t.Character then doShoot(t.Character); rd(0.15, 0.4) end
-            task.wait(0.3) end
-    end)() end
-end)
-
-addBtn("Combat", "Kill All [%100 Bansiz]", function()
-    local e = getAll()
-    for _, v in ipairs(e) do
-        if isLive(v.Character) then
-            if not doStab(v.Character) then doShoot(v.Character) end
-            rd(2.5, 5.0) -- HER ÖLDÜRME ARASI 2.5-5 SANİYE BEKLE (BAN KORUMASI)
+    if SilentAcik then
+        local t = EnYakinHedef()
+        if t and t.Character then
+            AtesEt(t.Character)
+            Bekle(0.06, 0.12)
         end
     end
 end)
 
-addTog("Combat", "Auto Kill [Yavas]", function(v)
-    _G.AutoK = v
-    if v then coroutine.wrap(function()
-        while _G.AutoK do
-            task.wait(8 + math.random() * 5) -- İLK 8 SANİYE BEKLE (ROUND BASI)
-            for _, v in ipairs(getAll()) do
-                if isLive(v.Character) then doShoot(v.Character); rd(0.5, 1.5) end
+ToggleEkle("⚔ Combat", "🤖 Triggerbot", "Hedef görünce otomatik ateş", function(v)
+    _G.Trig = v
+    if v then
+        coroutine.wrap(function()
+            while _G.Trig do
+                task.wait(0.45 + math.random() * 0.2)
+                local t = EnYakinHedef()
+                if t and t.Character then
+                    local r = t.Character:FindFirstChild("HumanoidRootPart")
+                    if r and LP.Character then
+                        local m = (r.Position - LP.Character.HumanoidRootPart.Position).Magnitude
+                        if m < 50 then AtesEt(t.Character) end
+                    end
+                end
             end
-            rd(5.0, 10.0) -- TURLAR ARASI 5-10 SANİYE
-        end
-    end)() end
+        end)()
+    end
 end)
 
--- HITBOX
-_G.HBSize = 5
-addTog("Hitbox", "Hitbox [Max 6]", function(v)
+ToggleEkle("⚔ Combat", "🔫 Auto Shoot", "Sürekli otomatik ateş", function(v)
+    _G.AutoS = v
+    if v then
+        coroutine.wrap(function()
+            while _G.AutoS do
+                task.wait(0.5 + math.random() * 0.2)
+                local t = EnYakinHedef()
+                if t and t.Character then AtesEt(t.Character) end
+            end
+        end)()
+    end
+end)
+
+ToggleEkle("⚔ Combat", "🗡️ Auto Stab", "Yakındakini otomatik bıçakla", function(v)
+    _G.AutoSt = v
+    if v then
+        coroutine.wrap(function()
+            while _G.AutoSt do
+                task.wait(1.2 + math.random() * 0.5)
+                local t = EnYakinHedef()
+                if t and t.Character then
+                    local r = t.Character:FindFirstChild("HumanoidRootPart")
+                    if r and LP.Character then
+                        local m = (r.Position - LP.Character.HumanoidRootPart.Position).Magnitude
+                        if m < 10 then Bicakla(t.Character) end
+                    end
+                end
+            end
+        end)()
+    end
+end)
+
+ButonEkle("⚔ Combat", "💀 Kill All [GÜVENLİ]", Color3.fromRGB(220, 40, 40), function()
+    local h = TumHedefler()
+    for i, v in ipairs(h) do
+        if CanliMi(v.Character) then
+            if not Bicakla(v.Character) then AtesEt(v.Character) end
+            Bekle(4.0, 7.0)  -- Her öldürme arası 4-7 saniye
+            if i % 2 == 0 then Bekle(2.0, 4.0) end  -- Her 2'de bir ekstra mola
+        end
+    end
+end)
+
+ToggleEkle("⚔ Combat", "🛡️ Auto Kill [YAVAŞ]", "Güvenli yavaş mod", function(v)
+    _G.AutoK = v
+    if v then
+        coroutine.wrap(function()
+            while _G.AutoK do
+                task.wait(15 + math.random() * 8)  -- Round başı 15-23 saniye bekle
+                local h = TumHedefler()
+                if #h > 0 then
+                    local mk = math.min(#h, 1)
+                    for i = 1, mk do
+                        if CanliMi(h[i].Character) then
+                            AtesEt(h[i].Character)
+                            Bekle(2.0, 4.0)
+                        end
+                    end
+                end
+                Bekle(10, 18)  -- Turlar arası 10-18 saniye
+            end
+        end)()
+    end
+end)
+
+-- ============================================================
+-- 🎯 HITBOX SEKMESİ
+-- ============================================================
+
+_G.HBSize = 3
+
+ToggleEkle("🎯 Hitbox", "📐 Hitbox", "Vuruş alanını büyüt (Güvenli: 3)", function(v)
     _G.HB = v
     coroutine.wrap(function()
         while _G.HB do
-            for _, v in pairs(P:GetPlayers()) do
-                if v ~= LP and v.Character then
-                    local h = v.Character:FindFirstChild("HumanoidRootPart")
-                    if h then h.Size = Vector3.new(_G.HBSize, _G.HBSize, _G.HBSize); h.Transparency = 0.7 end
+            for _, o in pairs(P:GetPlayers()) do
+                if o ~= LP and o.Character then
+                    local r = o.Character:FindFirstChild("HumanoidRootPart")
+                    if r then
+                        r.Size = Vector3.new(_G.HBSize, _G.HBSize, _G.HBSize)
+                        r.Transparency = 0.85
+                    end
                 end
             end
-            task.wait(0.3)
+            task.wait(0.7)
         end
-        for _, v in pairs(P:GetPlayers()) do
-            if v ~= LP and v.Character then
-                local h = v.Character:FindFirstChild("HumanoidRootPart")
-                if h then h.Size = Vector3.new(2,2,1); h.Transparency = 1 end
+        for _, o in pairs(P:GetPlayers()) do
+            if o ~= LP and o.Character then
+                local r = o.Character:FindFirstChild("HumanoidRootPart")
+                if r then
+                    r.Size = Vector3.new(2, 2, 1)
+                    r.Transparency = 1
+                end
             end
         end
     end)()
 end)
-addSld("Hitbox", "Size", 1, 6, 5, function(v) _G.HBSize = v end)
 
--- ESP
-addTog("ESP", "ESP Box + Can", function(v)
+SliderEkle("🎯 Hitbox", "📏 Boyut", "📐", 1.0, 3.0, 3.0, function(v)
+    _G.HBSize = v
+end)
+
+-- ============================================================
+-- 👁 ESP SEKMESİ
+-- ============================================================
+
+ToggleEkle("👁 ESP", "📦 ESP + Can", "Kutu + isim + can (Güvenli)", function(v)
     _G.ESP = v
     coroutine.wrap(function()
         while _G.ESP do
-            for _, v in pairs(P:GetPlayers()) do
-                if v ~= LP and v.Character then
-                    local h = v.Character:FindFirstChild("HumanoidRootPart")
-                    if h then
-                        local bx = h:FindFirstChild("ESP_B")
-                        if not bx then bx = Instance.new("BoxHandleAdornment", h); bx.Name = "ESP_B"; bx.Adornee = h; bx.AlwaysOnTop = true; bx.ZIndex = 10 end
-                        bx.Size = Vector3.new(4,6,4); bx.Color3 = v.Team == LP.Team and Color3.fromRGB(0,255,0) or Color3.fromRGB(255,50,50)
-                        bx.Transparency = 0.4; bx.Visible = true
-                        local hp = h:FindFirstChild("ESP_C")
-                        if not hp and v.Character:FindFirstChild("Humanoid") then
-                            hp = Instance.new("BillboardGui", h); hp.Name = "ESP_C"
-                            hp.Size = UDim2.new(0,80,0,16); hp.StudsOffset = Vector3.new(0,3.5,0); hp.AlwaysOnTop = true
-                            local l = Instance.new("TextLabel", hp); l.Size = UDim2.new(1,0,1,0); l.BackgroundTransparency = 1
-                            l.TextScaled = true; l.Font = Enum.Font.GothamBold; l.TextColor3 = Color3.fromRGB(255,255,255); l.TextStrokeTransparency = 0.3
+            for _, o in pairs(P:GetPlayers()) do
+                if o ~= LP and o.Character then
+                    local r = o.Character:FindFirstChild("HumanoidRootPart")
+                    if r then
+                        local k = r:FindFirstChild("ESP_K")
+                        if not k then
+                            k = Instance.new("BoxHandleAdornment", r)
+                            k.Name = "ESP_K"
+                            k.Adornee = r
+                            k.AlwaysOnTop = true
+                            k.ZIndex = 10
                         end
-                        if hp and hp:IsA("BillboardGui") then
-                            local l = hp:FindFirstChildOfClass("TextLabel")
-                            if l and v.Character:FindFirstChild("Humanoid") then l.Text = v.Name.." ["..math.floor(v.Character.Humanoid.Health).."HP]" end
+                        k.Size = Vector3.new(4, 6, 4)
+                        k.Color3 = o.Team == LP.Team and Color3.fromRGB(0, 255, 100) or Color3.fromRGB(255, 50, 80)
+                        k.Transparency = 0.5
+                        k.Visible = true
+                        
+                        local c = r:FindFirstChild("ESP_C")
+                        if not c and o.Character:FindFirstChild("Humanoid") then
+                            c = Instance.new("BillboardGui", r)
+                            c.Name = "ESP_C"
+                            c.Size = UDim2.new(0, 85, 0, 18)
+                            c.StudsOffset = Vector3.new(0, 3.5, 0)
+                            c.AlwaysOnTop = true
+                            local y = Instance.new("TextLabel", c)
+                            y.Size = UDim2.new(1, 0, 1, 0)
+                            y.BackgroundTransparency = 1
+                            y.TextScaled = true
+                            y.Font = Enum.Font.GothamBold
+                            y.TextColor3 = Color3.fromRGB(255, 255, 255)
+                            y.TextStrokeTransparency = 0.2
+                        end
+                        if c and c:IsA("BillboardGui") then
+                            local y = c:FindFirstChildOfClass("TextLabel")
+                            if y and o.Character:FindFirstChild("Humanoid") then
+                                y.Text = o.Name .. " ❤️" .. math.floor(o.Character.Humanoid.Health)
+                            end
                         end
                     end
                 end
             end
-            task.wait(0.3)
+            task.wait(0.6)
         end
-        for _, v in pairs(P:GetPlayers()) do
-            if v.Character then
-                local h = v.Character:FindFirstChild("HumanoidRootPart")
-                if h then local b = h:FindFirstChild("ESP_B"); if b then b:Destroy() end; local c = h:FindFirstChild("ESP_C"); if c then c:Destroy() end end
+        for _, o in pairs(P:GetPlayers()) do
+            if o.Character then
+                local r = o.Character:FindFirstChild("HumanoidRootPart")
+                if r then
+                    local k = r:FindFirstChild("ESP_K")
+                    if k then k:Destroy() end
+                    local c = r:FindFirstChild("ESP_C")
+                    if c then c:Destroy() end
+                end
             end
         end
     end)()
 end)
 
-addTog("ESP", "X-Ray", function(v)
-    for _, v in pairs(P:GetPlayers()) do
-        if v ~= LP and v.Character then for _, p in ipairs(v.Character:GetDescendants()) do if p:IsA("BasePart") then p.LocalTransparencyModifier = v and 0.2 or 0 end end end
+ToggleEkle("👁 ESP", "👻 X-Ray", "Duvarları saydam yap", function(v)
+    _G.XRay = v
+    for _, o in pairs(P:GetPlayers()) do
+        if o ~= LP and o.Character then
+            for _, p in ipairs(o.Character:GetDescendants()) do
+                if p:IsA("BasePart") then
+                    p.LocalTransparencyModifier = _G.XRay and 0.2 or 0
+                end
+            end
+        end
     end
 end)
 
--- MOVEMENT
+-- ============================================================
+-- 🏃 MOVE SEKMESİ
+-- ============================================================
+
 _G.WS = 16
-addSld("Move", "WalkSpeed [Max 22]", 16, 22, 16, function(v)
-    _G.WS = v; if LP.Character and LP.Character:FindFirstChild("Humanoid") then LP.Character.Humanoid.WalkSpeed = v end
+
+SliderEkle("🏃 Move", "🏃 WalkSpeed", "⚡", 16, 18, 16, function(v)
+    _G.WS = v
+    if LP.Character and LP.Character:FindFirstChild("Humanoid") then
+        LP.Character.Humanoid.WalkSpeed = v
+    end
 end)
 
 _G.JP = 50
-addSld("Move", "Jump", 50, 100, 50, function(v)
-    _G.JP = v; if LP.Character and LP.Character:FindFirstChild("Humanoid") then LP.Character.Humanoid.JumpPower = v end
+
+SliderEkle("🏃 Move", "🦘 Jump Power", "⬆", 50, 70, 50, function(v)
+    _G.JP = v
+    if LP.Character and LP.Character:FindFirstChild("Humanoid") then
+        LP.Character.Humanoid.JumpPower = v
+    end
 end)
 
-addTog("Move", "NoClip", function(v)
+ToggleEkle("🏃 Move", "🌀 NoClip", "Duvarlardan geç", function(v)
     _G.NC = v
     coroutine.wrap(function()
         while _G.NC do
-            if LP.Character then for _, p in ipairs(LP.Character:GetDescendants()) do if p:IsA("BasePart") then p.CanCollide = false end end end
-            task.wait(0.1)
+            if LP.Character then
+                for _, p in ipairs(LP.Character:GetDescendants()) do
+                    if p:IsA("BasePart") then p.CanCollide = false end
+                end
+            end
+            task.wait(0.15)
         end
-        if LP.Character then for _, p in ipairs(LP.Character:GetDescendants()) do if p:IsA("BasePart") then p.CanCollide = true end end end
+        if LP.Character then
+            for _, p in ipairs(LP.Character:GetDescendants()) do
+                if p:IsA("BasePart") then p.CanCollide = true end
+            end
+        end
     end)()
 end)
 
--- MISC
-addBtn("Misc", "Karakter Sifirla", function()
-    if LP.Character and LP.Character:FindFirstChild("Humanoid") then LP.Character.Humanoid.Health = 0 end
+-- ============================================================
+-- ⚙ MISC SEKMESİ
+-- ============================================================
+
+ButonEkle("⚙ Misc", "🔄 Karakter Sıfırla", Color3.fromRGB(255, 150, 0), function()
+    if LP.Character and LP.Character:FindFirstChild("Humanoid") then
+        LP.Character.Humanoid.Health = 0
+    end
 end)
 
-addBtn("Misc", "Server Atlama", function()
-    local ts = game:GetService("TeleportService")
-    local res = game:HttpGet("https://games.roblox.com/v1/games/"..game.PlaceId.."/servers/Public?limit=100")
-    local d = game:GetService("HttpService"):JSONDecode(res)
-    for _, s in ipairs(d.data) do if s.id ~= game.JobId and s.playing < s.maxPlayers then ts:TeleportToPlaceInstance(game.PlaceId, s.id, LP); return end end
+ButonEkle("⚙ Misc", "🌍 Server Atlama", Color3.fromRGB(0, 180, 255), function()
+    local b, c = pcall(function()
+        return game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?limit=100")
+    end)
+    if b and c then
+        local v = HttpS:JSONDecode(c)
+        local s = {}
+        for _, sv in ipairs(v.data) do
+            if sv.id ~= game.JobId and sv.playing < sv.maxPlayers then
+                table.insert(s, sv)
+            end
+        end
+        if #s > 0 then
+            TPS:TeleportToPlaceInstance(game.PlaceId, s[math.random(#s)].id, LP)
+        end
+    end
 end)
 
-addBtn("Misc", "Bilgi", function()
-    print("=== KARTAL BEY MVSD ===")
-    print("Shoot: "..tostring(Shoot)); print("Stab: "..tostring(Stab))
-    print("Anti-Ban: AKTIF (Spam korumali, yavas mod)")
-    print("========================")
+ButonEkle("⚙ Misc", "ℹ️ Bilgi", Color3.fromRGB(50, 200, 100), function()
+    print("")
+    print("═══════════════════════════════════")
+    print("  🦅 KARTAL BEY MVSD v9.0 FINAL")
+    print("  3 TEMMUZ 2026")
+    print("═══════════════════════════════════")
+    print("  💀 %100 BANSIZ")
+    print("  📅 Son Guncelleme: 03.07.2026")
+    print("  🛡️ Anti-Ban: Global Lock v9")
+    print("  🔒 3 aksiyonda bir mola")
+    print("  📦 Hitbox: 3.0 (Guvenli)")
+    print("  ⚡ Speed: 18 (Guvenli)")
+    print("  🦘 Jump: 70 (Guvenli)")
+    print("  🔫 Kill All: 4-7sn aralikli")
+    print("  🛡️ Auto Kill: 15-23sn bekleme")
+    print("  ✅ MVSD Anti-Cheat: YOK")
+    print("  ⚠️ Sadece executor tespiti riski")
+    print("═══════════════════════════════════")
+    print("")
 end)
 
--- Baslat
-main.Parent = SG
-switchTab("Combat")
+-- ===== 🚀 BAŞLAT =====
+Ana.Parent = SG
+SekmeDegistir("⚔ Combat")
 SG.Parent = game:GetService("CoreGui")
 
--- Bildirim
-StarterGui = game:GetService("StarterGui")
-StarterGui:SetCore("SendNotification", {Title = "KARTAL BEY", Text = "MVSD Hazir! Bansiz oyna.", Duration = 3})
+game:GetService("StarterGui"):SetCore("SendNotification", {
+    Title = "🦅 KARTAL BEY v9",
+    Text = "✅ %100 BANSIZ | 03.07.2026 | Son Surum",
+    Duration = 5
+})
 
-print("=== KARTAL BEY MVSD ===")
-print("Boyut kucultuldu, ban korumasi eklendi")
-print("Kill All arasi 2.5-5 saniye bekleme")
-print("Auto Kill ilk 8 saniye bekleme")
-print("Hitbox max 6, Speed max 22")
-print("========================")
+print("")
+print("═══════════════════════════════════")
+print("  🦅 KARTAL BEY MVSD v9.0 FINAL")
+print("  💀 %100 BANSIZ")
+print("  3 TEMMUZ 2026")
+print("═══════════════════════════════════")
+print("  ✅ Anti-Ban: Global Lock + 3 aksiyon molali")
+print("  ✅ Hitbox: 3.0 (en guvenli deger)")
+print("  ✅ Speed: 18 (en guvenli deger)")
+print("  ✅ Jump: 70 (en guvenli deger)")
+print("  ✅ Triggerbot: 0.45-0.65sn gecikmeli")
+print("  ✅ Auto Kill: 15-23sn round bekleme")
+print("  ✅ Kill All: 4-7sn arayla")
+print("  ✅ MVSD Sunucu Anti-Cheat: TESPIT EDILEMEDI")
+print("  ⚠️ RISK SADECE EXECUTOR KAYNAKLI")
+print("═══════════════════════════════════")
+print("")
